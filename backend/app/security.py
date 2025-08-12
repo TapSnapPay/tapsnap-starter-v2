@@ -1,23 +1,25 @@
-# backend/app/security.py
 import os
-import secrets
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-_basic = HTTPBasic()
+AUTH_USER = "tapsnap"
+AUTH_PASS = os.getenv("ADMIN_PASSWORD", "")
 
-def _check_basic(creds: HTTPBasicCredentials, user_env: str, pass_env: str):
-    """Reusable checker for BASIC auth."""
-    expected_user = os.getenv(user_env, "")
-    expected_pass = os.getenv(pass_env, "")
-    ok_user = secrets.compare_digest(creds.username or "", expected_user)
-    ok_pass = secrets.compare_digest(creds.password or "", expected_pass)
-    if not (ok_user and ok_pass):
+# Log only the length for safety
+logging.getLogger().setLevel(logging.INFO)
+logging.info(f"[ADMIN] loaded user={AUTH_USER}, pwd_len={len(AUTH_PASS)}")
+
+http_basic = HTTPBasic()
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(http_basic)):
+    if credentials.username != AUTH_USER or credentials.password != AUTH_PASS:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
+            detail="Not authorized",
             headers={"WWW-Authenticate": "Basic"},
         )
+
 
 def require_webhook(creds: HTTPBasicCredentials = Depends(_basic)):
     """Protects /webhooks endpoint (already used)."""
