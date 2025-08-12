@@ -24,8 +24,9 @@ def get_db():
     finally:
         db.close()
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def admin_home(request: Request, db: Session = Depends(get_db)):
+    ...
     merchants = db.query(models.Merchant).order_by(models.Merchant.id.desc()).all()
     txs = db.query(models.Transaction).order_by(models.Transaction.id.desc()).limit(50).all()
     return templates.TemplateResponse("admin/index.html", {"request": request, "merchants": merchants, "txs": txs})
