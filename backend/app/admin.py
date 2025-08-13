@@ -9,7 +9,7 @@ from .security import require_admin
 from .db import SessionLocal
 from . import models
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="backend/templates")
 
 router = APIRouter(
     prefix="/admin",
