@@ -1,3 +1,5 @@
+from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -42,3 +44,25 @@ async def create_merchant(request: Request, db: Session = Depends(get_db)):
         db.add(m)
         db.commit()
     return RedirectResponse(url="/admin/", status_code=303)
+
+@router.post("/transactions/{tx_id}/refund")
+def refund_transaction(
+    tx_id: int,
+    db: Session = Depends(get_db),
+):
+    # Load the transaction
+    tx = db.query(models.Transaction).get(tx_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    # Only change if not already refunded
+    if tx.status != "refunded":
+        tx.status = "refunded"
+        if not tx.psp_reference:
+            tx.psp_reference = "PSP_TEST_REFUND"
+        db.add(tx)
+        db.commit()
+
+    # Redirect back to the admin list
+    return RedirectResponse(url="/admin/", status_code=303)
+
