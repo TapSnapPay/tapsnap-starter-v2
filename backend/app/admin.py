@@ -1,20 +1,21 @@
-from fastapi import Depends
-from .security import require_admin
-
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+
+from .security import require_admin
 from .db import SessionLocal
 from . import models
 
 templates = Jinja2Templates(directory="templates")
+
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
     include_in_schema=False,
     dependencies=[Depends(require_admin)]
 )
+
 
 
 def get_db():
