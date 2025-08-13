@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Test Checkout</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 2rem; max-width: 640px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 1.5rem; }
+    button { padding: .6rem 1rem; border: none; border-radius: 8px; background: #111827; color: white; cursor: pointer; }
+    button:hover { background: #0b1220; }
+    .muted { color: #6b7280; }
+  </style>
+</head>
+<body>
+  <h1>Test Checkout</h1>
+  <p class="muted">This simulates a payment without calling Adyen.</p>
+
+  <div class="card">
+    <form method="post">
+      <input type="hidden" name="merchant_id" value="{{ merchant_id }}">
+      <input type="hidden" name="amount_cents" value="{{ amount_cents }}">
+      <input type="hidden" name="currency" value="{{ currency }}">
+      <p>Merchant ID: <strong>{{ merchant_id }}</strong></p>
+      <p>Amount: <strong>{{ display_amount }} {{ currency }}</strong></p>
+      <button type="submit">Pay (simulate)</button>
+    </form>
+  </div>
+
+  <p class="muted">URL params: <code>?merchant_id=9&amount=25.00&currency=USD</code></p>
+</body>
+</html>

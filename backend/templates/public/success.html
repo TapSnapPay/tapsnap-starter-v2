@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Payment Simulated</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 2rem; max-width: 640px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 1.5rem; }
+    a { color: #111827; }
+  </style>
+</head>
+<body>
+  <h1>Payment Simulated</h1>
+  <div class="card">
+    <p>Transaction #<strong>{{ tx.id }}</strong> authorised.</p>
+    <p>Amount: <strong>{{ (tx.amount_cents / 100) | round(2) }} {{ tx.currency }}</strong></p>
+    <p>Status: <strong>{{ tx.status }}</strong></p>
+    <p>PSP Ref: <strong>{{ tx.psp_reference }}</strong></p>
+  </div>
+  <p><a href="/admin/">Back to Admin</a></p>
+</body>
+</html>
