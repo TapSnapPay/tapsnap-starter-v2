@@ -45,24 +45,13 @@ async def create_merchant(request: Request, db: Session = Depends(get_db)):
         db.commit()
     return RedirectResponse(url="/admin/", status_code=303)
 
-@router.post("/transactions/{tx_id}/refund")
-def refund_transaction(
+@router.post("/transactions/{tx_id}/refund", response_class=RedirectResponse)
+async def refund_tx(
     tx_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    # Load the transaction
-    tx = db.query(models.Transaction).get(tx_id)
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-
-    # Only change if not already refunded
-    if tx.status != "refunded":
+    tx = db.get(models.Transaction, tx_id)
+    if tx and tx.status != "refunded":
         tx.status = "refunded"
-        if not tx.psp_reference:
-            tx.psp_reference = "PSP_TEST_REFUND"
-        db.add(tx)
         db.commit()
-
-    # Redirect back to the admin list
     return RedirectResponse(url="/admin/", status_code=303)
-
