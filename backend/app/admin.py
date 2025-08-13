@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -9,7 +10,8 @@ from .security import require_admin
 from .db import SessionLocal
 from . import models
 
-templates = Jinja2Templates(directory="backend/templates")
+TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"  # -> backend/templates
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(
     prefix="/admin",
