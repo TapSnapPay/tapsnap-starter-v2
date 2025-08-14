@@ -1,31 +1,56 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Test Checkout</title>
-  <style>
-    body { font-family: system-ui, Arial, sans-serif; margin: 2rem; max-width: 640px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 1.5rem; }
-    button { padding: .6rem 1rem; border: none; border-radius: 8px; background: #111827; color: white; cursor: pointer; }
-    button:hover { background: #0b1220; }
-    .muted { color: #6b7280; }
-  </style>
-</head>
-<body>
-  <h1>Test Checkout</h1>
-  <p class="muted">This simulates a payment without calling Adyen.</p>
+{% extends "base.html" %}
+{% block content %}
+<h2>Checkout</h2>
 
-  <div class="card">
-    <form method="post">
-      <input type="hidden" name="merchant_id" value="{{ merchant_id }}">
-      <input type="hidden" name="amount_cents" value="{{ amount_cents }}">
-      <input type="hidden" name="currency" value="{{ currency }}">
-      <p>Merchant ID: <strong>{{ merchant_id }}</strong></p>
-      <p>Amount: <strong>{{ display_amount }} {{ currency }}</strong></p>
-      <button type="submit">Pay (simulate)</button>
-    </form>
-  </div>
+<form id="checkoutForm" style="max-width:420px; display:grid; gap:10px;">
+  <label>
+    Merchant ID
+    <input id="merchantId" type="number" required />
+  </label>
 
-  <p class="muted">URL params: <code>?merchant_id=9&amount=25.00&currency=USD</code></p>
-</body>
-</html>
+  <label>
+    Amount (USD $)
+    <input id="amount" type="number" step="0.01" min="0.01" required />
+  </label>
+
+  <label>
+    Currency
+    <input id="currency" type="text" value="USD" required />
+  </label>
+
+  <button type="submit">Pay</button>
+</form>
+
+<script>
+  const form = document.getElementById('checkoutForm');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const merchant_id = parseInt(document.getElementById('merchantId').value, 10);
+    const dollars = parseFloat(document.getElementById('amount').value);
+    const amount_cents = Math.round(dollars * 100); // $30.00 -> 3000
+    const currency = document.getElementById('currency').value.trim().toUpperCase();
+
+    try {
+      const res = await fetch('/api/v1/transactions/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ merchant_id, amount_cents, currency })
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        alert('Create failed: ' + res.status + ' ' + text);
+        return;
+      }
+
+      const tx = await res.json();
+      // Go to success page and show the new transaction
+      window.location.href = '/success?tx_id=' + tx.id;
+    } catch (err) {
+      alert('Network error: ' + err.message);
+    }
+  });
+</script>
+{% endblock %}
