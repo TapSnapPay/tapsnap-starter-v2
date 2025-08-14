@@ -2,12 +2,14 @@ from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from pathlib import Path
 
 from .db import SessionLocal
 from . import models
 
-router = APIRouter(prefix="/test", tags=["test"], include_in_schema=False)
-templates = Jinja2Templates(directory="templates")
+router = APIRouter(prefix="", tags=["public"], include_in_schema=False)
+TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 def get_db():
     db = SessionLocal()
@@ -59,3 +61,7 @@ def checkout_submit(
         "public/success.html",
         {"request": request, "tx": tx},
     )
+
+@router.get("/success", response_class=HTMLResponse)
+def success_page(request: Request):
+    return templates.TemplateResponse("public/success.html", {"request": request})
