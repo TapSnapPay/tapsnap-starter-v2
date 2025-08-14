@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from pathlib import Path
+from typing import Optional
 
 from .db import SessionLocal
 from . import models
@@ -65,3 +66,16 @@ def checkout_submit(
 @router.get("/success", response_class=HTMLResponse)
 def success_page(request: Request):
     return templates.TemplateResponse("public/success.html", {"request": request})
+
+
+@router.get("/success", response_class=HTMLResponse)
+def success_page(
+    request: Request,
+    tx_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    # Try to load the transaction if a tx_id was provided. If not found, keep tx=None.
+    tx = None
+    if tx_id is not None:
+        tx = db.get(models.Transaction, tx_id)
+    return templates.TemplateResponse("public/success.html", {"request": request, "tx": tx})
