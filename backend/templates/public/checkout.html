@@ -1,56 +1,42 @@
-{% extends "base.html" %}
-{% block content %}
-<h2>Checkout</h2>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Checkout</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 2rem; }
+    .card { max-width: 520px; border: 1px solid #ddd; padding: 16px; border-radius: 12px; }
+    label { display:block; margin-top: 12px; font-weight: 600; }
+    input { width: 100%; padding: 8px; }
+    button { margin-top: 16px; width: 100%; padding: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Checkout</h1>
+  <div class="card">
+    <!-- When you type in Amount (dollars), we keep amount_cents updated automatically -->
+    <form method="post" action="/checkout" oninput="
+      const a = parseFloat(amount_dollars.value || '0');
+      amount_cents.value = Number.isFinite(a) ? Math.round(a * 100) : 0;
+    ">
+      <label for="merchant_id">Merchant ID</label>
+      <input id="merchant_id" name="merchant_id" type="number"
+             value="{{ merchant_id }}" required readonly />
 
-<form id="checkoutForm" style="max-width:420px; display:grid; gap:10px;">
-  <label>
-    Merchant ID
-    <input id="merchantId" type="number" required />
-  </label>
+      <label for="amount_dollars">Amount (USD $)</label>
+      <input id="amount_dollars" type="number" step="0.01" min="0"
+             value="{{ display_amount }}" required />
 
-  <label>
-    Amount (USD $)
-    <input id="amount" type="number" step="0.01" min="0.01" required />
-  </label>
+      <!-- Hidden field the server expects -->
+      <input id="amount_cents" name="amount_cents" type="hidden"
+             value="{{ amount_cents }}" />
 
-  <label>
-    Currency
-    <input id="currency" type="text" value="USD" required />
-  </label>
+      <label for="currency">Currency</label>
+      <input id="currency" name="currency" type="text"
+             value="{{ currency }}" required readonly />
 
-  <button type="submit">Pay</button>
-</form>
-
-<script>
-  const form = document.getElementById('checkoutForm');
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const merchant_id = parseInt(document.getElementById('merchantId').value, 10);
-    const dollars = parseFloat(document.getElementById('amount').value);
-    const amount_cents = Math.round(dollars * 100); // $30.00 -> 3000
-    const currency = document.getElementById('currency').value.trim().toUpperCase();
-
-    try {
-      const res = await fetch('/api/v1/transactions/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merchant_id, amount_cents, currency })
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        alert('Create failed: ' + res.status + ' ' + text);
-        return;
-      }
-
-      const tx = await res.json();
-      // Go to success page and show the new transaction
-      window.location.href = '/success?tx_id=' + tx.id;
-    } catch (err) {
-      alert('Network error: ' + err.message);
-    }
-  });
-</script>
-{% endblock %}
+      <button type="submit">Pay</button>
+    </form>
+  </div>
+</body>
+</html>
