@@ -9,10 +9,26 @@
       <button class="btn" type="submit">Create</button>
     </form>
     <table style="margin-top:14px">
-      <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Created</th></tr></thead>
+     <thead>
+  <tr>
+    <th>ID</th>
+    <th>Name</th>
+    <th>Email</th>
+    <th>Created</th>
+    <th>Actions</th>
+  </tr>
+</thead>
       <tbody>
       {% for m in merchants %}
-        <tr><td>{{m.id}}</td><td>{{m.name}}</td><td>{{m.email}}</td><td class="muted">{{m.created_at}}</td></tr>
+        <tr>
+  <td>{{ m.id }}</td>
+  <td>{{ m.name }}</td>
+  <td>{{ m.email }}</td>
+  <td class="muted">{{ m.created_at }}</td>
+  <td>
+    <a class="btn" href="/checkout?merchant_id={{ m.id }}&amount=25&currency=USD">Collect $25</a>
+  </td>
+</tr>
       {% else %}
         <tr><td colspan="4" class="muted">No merchants yet</td></tr>
       {% endfor %}
