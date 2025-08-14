@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>Payment Simulated</title>
   <style>
     body { font-family: system-ui, Arial, sans-serif; margin: 2rem; max-width: 640px; }
@@ -11,12 +11,23 @@
 </head>
 <body>
   <h1>Payment Simulated</h1>
-  <div class="card">
-    <p>Transaction #<strong>{{ tx.id }}</strong> authorised.</p>
-    <p>Amount: <strong>{{ (tx.amount_cents / 100) | round(2) }} {{ tx.currency }}</strong></p>
-    <p>Status: <strong>{{ tx.status }}</strong></p>
-    <p>PSP Ref: <strong>{{ tx.psp_reference }}</strong></p>
-  </div>
+
+  {% if tx %}
+    <div class="card">
+      <p>Transaction <strong>#{{ tx.id }}</strong> authorised.</p>
+      <p>Amount: <strong>{{ (tx.amount_cents / 100) | round(2) }} {{ tx.currency }}</strong></p>
+      <p>Status: <strong>{{ tx.status }}</strong></p>
+      <p>PSP Ref: <strong>{{ tx.psp_reference }}</strong></p>
+    </div>
+  {% else %}
+    <div class="card">
+      <p>We couldn’t find that transaction.</p>
+      {% if request and request.query_params and request.query_params.get('tx_id') %}
+        <p>You asked for <code>tx_id={{ request.query_params.get('tx_id') }}</code>.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <p><a href="/admin/">Back to Admin</a></p>
 </body>
 </html>
