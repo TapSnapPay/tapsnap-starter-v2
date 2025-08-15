@@ -37,8 +37,22 @@ app.include_router(public_router)
 def root():
     # send anyone who visits the root to the admin UI
     return RedirectResponse(url="/admin", status_code=307)
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+# If it's a 401, include the Basic-Auth challenge so the browser shows the login box
+if exc.status_code == 401:
+    return templates.TemplateResponse(
+        "errors/error.html",
+        {
+            "request": request,
+            "status_code": 401,
+            "detail": "Unauthorized",
+        },
+        status_code=401,
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
     # Pretty 404 page
     if exc.status_code == 404:
         return templates.TemplateResponse(
