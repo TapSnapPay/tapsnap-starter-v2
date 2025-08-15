@@ -59,3 +59,19 @@ class WebhookEvent(Base):
     raw_json: Mapped[str] = mapped_column(Text, nullable=False)                        # raw request body
     headers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)                # JSON-dumped headers
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+# --- Refund requests ----------------------------------------------------------
+from sqlalchemy import ForeignKey, String, Integer, DateTime, Text  # (already imported above in your file)
+from sqlalchemy.sql import func
+from sqlalchemy.orm import Mapped, mapped_column
+
+class RefundRequest(Base):
+    __tablename__ = "refund_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), index=True, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="USD", nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(64), default="admin", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="refund_requested", nullable=False)  # reserved if you ever add a review step
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

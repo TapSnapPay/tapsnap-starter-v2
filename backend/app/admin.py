@@ -192,3 +192,51 @@ def export_transactions_csv(
 # --- at the very end of backend/app/admin.py ---
 admin_ui = router
 
+# --- Transaction detail + Refund button --------------------------------------
+
+from fastapi.responses import RedirectResponse  # already imported at top in your file; keep if present
+from fastapi.responses import HTMLResponse      # also already present above
+
+@router.get("/tx/{tx_id}", response_class=HTMLResponse)
+def tx_detail(tx_id: int, request: Request, db: Session = Depends(get_db)):
+    tx = db.get(models.Transaction, tx_id)
+    if not tx:
+        # nice 404 page you already have
+        return templates.TemplateResponse(
+            "errors/404.html",
+            {"request": request, "path": request.url.path},
+            status_code=404,
+        )
+    return templates.TemplateResponse(
+        "admin/tx_detail.html",
+        {"request": request, "tx": tx}
+    )
+
+@router.post("/tx/{tx_id}/refund")
+def request_refund(tx_id: int, request: Request, db: Session = Depends(get_db)):
+    tx = db.get(models.Transaction, tx_id)
+    if not tx:
+        return templates.TemplateResponse(
+            "errors/404.html",
+            {"request": request, "path": request.url.path},
+            status_code=404,
+        )
+
+    # Write an audit record
+    rr = models.RefundRequest(
+        transaction_id=tx.id,
+        amount_cents=tx.amount_cents,
+        currency=tx.currency,
+        requested_by="admin",
+        status="refund_requested",
+    )
+    db.add(rr)
+
+    # Flip the transaction to "refund_requested"
+    tx.status = "refund_requested"
+    db.add(tx)
+
+    db.commit()
+    # back to the tx page with a little query string to show a message
+    return RedirectResponse(url=f"/admin/tx/{tx_id}?ok=1", status_code=303)
+

@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Transaction {{ tx.id }} • Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; max-width: 720px; margin: 40px auto; }
+    header { display:flex; align-items:center; gap:12px; }
+    h1 { font-size: 22px; margin: 0; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
+    .tag { display:inline-block; padding:2px 8px; border-radius:12px; background:#eef2ff; color:#1e40af; font-size:12px; }
+    .btn { display:inline-block; padding:10px 14px; border-radius:10px; text-decoration:none; border:1px solid #ddd; }
+    .btn-danger { background:#fee2e2; border-color:#fecaca; color:#991b1b; }
+    .row { display:flex; gap:12px; align-items:center; }
+    .ok { background:#ecfeff; border:1px solid #a5f3fc; padding:8px 10px; border-radius:10px; margin:10px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="btn" href="/admin/">&larr; Back to Admin</a>
+    <h1>Transaction #{{ tx.id }}</h1>
+    <span class="tag">{{ tx.status }}</span>
+  </header>
+
+  {% if request.query_params.get("ok") %}
+  <div class="ok">Refund requested. Waiting for PSP webhook to mark it as <strong>refunded</strong>.</div>
+  {% endif %}
+
+  <table>
+    <tr><th>Merchant</th><td>{{ tx.merchant_id }}</td></tr>
+    <tr><th>Amount</th><td>{{ "%.2f"|format((tx.amount_cents or 0)/100.0) }} {{ tx.currency }}</td></tr>
+    <tr><th>PSP reference</th><td>{{ tx.psp_reference or "-" }}</td></tr>
+    <tr><th>Created</th><td>{{ tx.created_at }}</td></tr>
+  </table>
+
+  {% if tx.status != "refund_requested" and tx.status != "refunded" %}
+    <form method="post" action="/admin/tx/{{ tx.id }}/refund">
+      <button class="btn btn-danger" type="submit">Refund</button>
+    </form>
+  {% else %}
+    <p>Refund is already <strong>{{ tx.status }}</strong>.</p>
+  {% endif %}
+</body>
+</html>
