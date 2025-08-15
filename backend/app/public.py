@@ -100,11 +100,6 @@ def checkout_submit(
 
 
 @router.get("/success", response_class=HTMLResponse)
-def success_page(request: Request):
-    return templates.TemplateResponse("public/success.html", {"request": request})
-
-
-@router.get("/success", response_class=HTMLResponse)
 def success_page(
     request: Request,
     tx_id: Optional[int] = None,
