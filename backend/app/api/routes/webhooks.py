@@ -1,5 +1,4 @@
 # backend/app/api/routes/webhooks.py
-
 from fastapi import APIRouter, Request, Depends, HTTPException
 from sqlalchemy.orm import Session
 import hmac, hashlib, json, re
@@ -7,18 +6,17 @@ import hmac, hashlib, json, re
 from ...db import SessionLocal
 from ...config import settings
 from ...security import require_webhook_auth, webhook_rate_limit
-from ... import models  # Transaction + WebhookEvent live here
+from ... import models
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
 
-# --- DB session per-request
+# DB session per request
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-
 
 @router.post(
     "/adyen",
@@ -27,17 +25,18 @@ def get_db():
 async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     """
     Hardened Adyen webhook:
-      1) Read raw body
+      1) Read raw body exactly as sent
       2) Verify HMAC (X-Signature) with WEBHOOK_SIGNING_SECRET (if set)
       3) Idempotency via Idempotency-Key header (fallback: SHA256(body))
       4) Persist raw event + headers
-      5) BUSINESS LOGIC: handle AUTHORISATION -> set Transaction.status / psp_reference
+      5) BUSINESS: update Transaction on AUTHORISATION / CAPTURE / REFUND
     """
-    # -- 1) Read raw body as sent
+
+    # 1) Read raw body as sent
     raw_bytes: bytes = await request.body()
     raw_text: str = raw_bytes.decode("utf-8", "ignore")
 
-    # -- 2) Signature check (optional, only if a secret is configured)
+    # 2) Signature check (optional, only if a secret is configured)
     secret = settings.WEBHOOK_SIGNING_SECRET or ""
     sent_sig = request.headers.get("X-Signature", "")
 
@@ -47,7 +46,7 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
         if not hmac.compare_digest(sent_sig, expected_sig):
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-    # -- 3) Idempotency key
+    # 3) Idempotency key
     event_key = request.headers.get("Idempotency-Key")
     if not event_key:
         event_key = hashlib.sha256(raw_bytes).hexdigest()
@@ -61,7 +60,7 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     if exists:
         return {"ok": True, "duplicate": True}
 
-    # -- 4) Persist the raw event for auditing/replays
+    # 4) Persist the raw event for auditing/replays
     headers_dict = dict(request.headers)
     evt = models.WebhookEvent(
         provider="adyen",
@@ -74,98 +73,90 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(evt)
 
-   # -- 5) BUSINESS LOGIC: update Transaction on AUTHORISATION / CAPTURE / REFUND
-handled = 0
+    # 5) BUSINESS: update Transaction on AUTHORISATION / CAPTURE / REFUND
+    handled = 0
 
-# Turn the raw JSON text into a Python dict (or {} if it’s not JSON)
-try:
-    payload = json.loads(raw_text) if raw_text else {}
-except json.JSONDecodeError:
-    payload = {}
-
-# Helper: yield each NotificationRequestItem, no matter the shape
-def iter_notification_items(p):
-    if isinstance(p, dict):
-        if "notificationItems" in p and isinstance(p["notificationItems"], list):
-            for wrapper in p["notificationItems"]:
-                if isinstance(wrapper, dict) and "NotificationRequestItem" in wrapper:
-                    yield wrapper["NotificationRequestItem"]
-                else:
-                    # already the inner item
-                    yield wrapper
-        elif "NotificationRequestItem" in p:
-            yield p["NotificationRequestItem"]
-        else:
-            yield p
-    elif isinstance(p, list):
-        for item in p:
-            yield item
-
-# Walk the items and update our Transaction
-for nri in iter_notification_items(payload):
-    nri = nri or {}
-    event_code   = str(nri.get("eventCode", "")).upper()
-    success      = str(nri.get("success", "")).lower() == "true"
-    psp_ref      = nri.get("pspReference") or nri.get("psp_reference")
-    merchant_ref = str(nri.get("merchantReference", ""))
-
-    # Find tx_id inside merchantReference like "tx_123"
-    m = re.search(r"tx_(\d+)", merchant_ref)
-    if not m:
-        continue
+    # Turn the raw JSON text into a Python dict (or {} if it’s not JSON)
     try:
-        tx_id = int(m.group(1))
-    except ValueError:
-        continue
+        payload = json.loads(raw_text) if raw_text else {}
+    except json.JSONDecodeError:
+        payload = {}
 
-    tx = db.get(models.Transaction, tx_id)
-    if not tx:
-        continue
+    # Helper: yield each NotificationRequestItem, no matter the shape
+    def notification_items(p):
+        if isinstance(p, dict):
+            if "notificationItems" in p and isinstance(p["notificationItems"], list):
+                for wrapper in p["notificationItems"]:
+                    if isinstance(wrapper, dict) and "NotificationRequestItem" in wrapper:
+                        yield wrapper["NotificationRequestItem"]
+                    else:
+                        yield wrapper
+            elif "NotificationRequestItem" in p:
+                yield p["NotificationRequestItem"]
+            else:
+                yield p
+        elif isinstance(p, list):
+            for item in p:
+                yield item
 
-    # --- AUTHORISATION ---
-    if event_code == "AUTHORISATION":
-        tx.status = "authorised" if success else "failed"
-        if psp_ref:
-            tx.psp_reference = psp_ref
+    # Walk the items and update our Transaction
+    for nri in notification_items(payload):
+        nri = nri or {}
+        event_code = str(nri.get("eventCode", "")).upper()
+        success = str(nri.get("success", "")).lower() == "true"
+        psp_ref = nri.get("pspReference") or nri.get("psp_reference")
+        merchant_ref = str(nri.get("merchantReference", ""))
 
-        # If Adyen sent amount in minor units, sync it (optional)
-        amt = nri.get("amount") or {}
-        if isinstance(amt, dict):
-            if isinstance(amt.get("value"), int):
-                tx.amount_cents = int(amt["value"])
-            if isinstance(amt.get("currency"), str):
-                tx.currency = amt["currency"]
+        # Find tx_id inside merchantReference like "tx_123"
+        m = re.search(r"tx_(\d+)", merchant_ref)
+        if not m:
+            continue
+        try:
+            tx_id = int(m.group(1))
+        except ValueError:
+            continue
 
-        db.add(tx)
-        handled += 1
-        continue
+        tx = db.get(models.Transaction, tx_id)
+        if not tx:
+            continue
 
-    # --- CAPTURE ---
-    if event_code == "CAPTURE":
-        # If capture succeeded, mark captured; if not, leave as-is or mark failed
-        if success:
-            tx.status = "captured"
-        else:
-            tx.status = "failed"
-        if psp_ref:
-            tx.psp_reference = psp_ref
-        db.add(tx)
-        handled += 1
-        continue
+        # --- AUTHORISATION ---
+        if event_code == "AUTHORISATION":
+            tx.status = "authorised" if success else "failed"
+            if psp_ref:
+                tx.psp_reference = psp_ref
+            # If Adyen sent amount in minor units, sync it (optional)
+            amt = nri.get("amount") or {}
+            if isinstance(amt, dict):
+                if isinstance(amt.get("value"), int):
+                    tx.amount_cents = int(amt["value"])
+                if isinstance(amt.get("currency"), str):
+                    tx.currency = amt["currency"]
+            db.add(tx)
+            handled += 1
+            continue
 
-    # --- REFUND ---
-    if event_code == "REFUND":
-        # If refund succeeded, mark refunded; if not, leave as-is
-        if success:
-            tx.status = "refunded"
-        if psp_ref:
-            tx.psp_reference = psp_ref
-        db.add(tx)
-        handled += 1
-        continue
+        # --- CAPTURE ---
+        if event_code == "CAPTURE":
+            tx.status = "captured" if success else "failed"
+            if psp_ref:
+                tx.psp_reference = psp_ref
+            db.add(tx)
+            handled += 1
+            continue
 
-# Save DB changes only if we actually touched something
-if handled:
-    db.commit()
+        # --- REFUND ---
+        if event_code == "REFUND":
+            if success:
+                tx.status = "refunded"
+                if psp_ref:
+                    tx.psp_reference = psp_ref
+                db.add(tx)
+                handled += 1
+            continue
 
-return {"ok": True, "saved": True, "handled": handled}
+    # Save DB changes only if we actually touched something
+    if handled:
+        db.commit()
+
+    return {"ok": True, "saved": True, "handled": handled}
