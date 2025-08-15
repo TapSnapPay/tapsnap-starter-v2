@@ -36,10 +36,52 @@ def get_db():
 
 @router.get("/", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def admin_home(request: Request, db: Session = Depends(get_db)):
-    ...
+    # merchants list (unchanged)
     merchants = db.query(models.Merchant).order_by(models.Merchant.id.desc()).all()
-    txs = db.query(models.Transaction).order_by(models.Transaction.id.desc()).limit(50).all()
-    return templates.TemplateResponse("admin/index.html", {"request": request, "merchants": merchants, "txs": txs})
+
+    # ---- NEW: pagination + status filter ----
+    per_page = 10
+
+    # page number from the URL, default 1
+    try:
+        page = int(request.query_params.get("page", "1"))
+        if page < 1:
+            page = 1
+    except Exception:
+        page = 1
+
+    # status filter from the URL (optional)
+    status = request.query_params.get("status")
+    q = db.query(models.Transaction)
+    if status:
+        q = q.filter(models.Transaction.status == status)
+
+    # count, pages, and one page of results
+    total = q.count()
+    pages = max(1, (total + per_page - 1) // per_page)
+    if page > pages:
+        page = pages
+
+    txs = (
+        q.order_by(models.Transaction.id.desc())
+         .offset((page - 1) * per_page)
+         .limit(per_page)
+         .all()
+    )
+
+    return templates.TemplateResponse(
+        "admin/index.html",
+        {
+            "request": request,
+            "merchants": merchants,
+            "txs": txs,
+            "page": page,
+            "pages": pages,
+            "has_prev": page > 1,
+            "has_next": page < pages,
+            "status": status,
+        },
+    )
 
 @router.post("/merchants/new", response_class=HTMLResponse)
 async def create_merchant(request: Request, db: Session = Depends(get_db)):

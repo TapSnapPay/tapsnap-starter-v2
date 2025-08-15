@@ -44,6 +44,18 @@
   <div class="card">
     <h2 style="margin-top:0">Recent Transactions</h2>
 <h2 style="margin-top:0">Recent Transactions</h2>
+<form method="get" action="/admin/" style="margin:10px 0;">
+  <label class="muted" style="margin-right:6px;">Status</label>
+  <select name="status">
+    <option value="" {% if not status %}selected{% endif %}>All</option>
+    <option value="authorised" {% if status=='authorised' %}selected{% endif %}>authorised</option>
+    <option value="refunded" {% if status=='refunded' %}selected{% endif %}>refunded</option>
+    <option value="created" {% if status=='created' %}selected{% endif %}>created</option>
+  </select>
+  <input type="hidden" name="page" value="1">
+  <button class="btn" type="submit" style="margin-left:6px;">Filter</button>
+</form>
+
 <form method="get" action="/admin/transactions.csv" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin: 8px 0 12px;">
   <div>
     <label class="muted" style="display:block; font-size:12px;">Start (YYYY-MM-DD)</label>
@@ -111,6 +123,22 @@
   </tbody>
 </table>
 </table>
+
+<div style="margin-top:12px;">
+  {% if has_prev %}
+    <a class="btn" href="/admin/?page={{ page-1 }}{% if status %}&status={{ status }}{% endif %}">Prev</a>
+  {% else %}
+    <span class="btn muted" style="opacity:.5; pointer-events:none;">Prev</span>
+  {% endif %}
+
+  <span class="muted" style="margin:0 8px;">Page {{ page }} of {{ pages }}</span>
+
+  {% if has_next %}
+    <a class="btn" href="/admin/?page={{ page+1 }}{% if status %}&status={{ status }}{% endif %}">Next</a>
+  {% else %}
+    <span class="btn muted" style="opacity:.5; pointer-events:none;">Next</span>
+  {% endif %}
+</div>
 
 <script>
   async function copyLink(url, btn) {
