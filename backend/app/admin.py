@@ -11,7 +11,7 @@ import csv
 import io
 from fastapi.responses import Response
 
-from .security import require_admin
+from .security import require_admin, rate_limit_admin, check_admin_ip
 from .db import SessionLocal
 from . import models
 
@@ -22,7 +22,7 @@ router = APIRouter(
     prefix="/admin",
     tags=["admin"],
     include_in_schema=False,
-    dependencies=[Depends(require_admin)]
+    dependencies=[Depends(check_admin_ip), Depends(rate_limit_admin), Depends(require_admin)],
 )
 
 
