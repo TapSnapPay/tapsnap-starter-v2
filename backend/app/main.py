@@ -1,16 +1,17 @@
 # backend/app/main.py
 from fastapi import FastAPI, Request
-from .db import init_db
-from .api.routes import merchants, transactions, webhooks, onboarding
-from . import admin as admin_ui
-from .public.routes import router as public_router
-
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
 from pathlib import Path
 import logging
+
+# app internals
+from .db import init_db
+from .api.routes import merchants, transactions, webhooks, onboarding
+from .admin import admin_ui
+from .public import router as public_router
 
 app = FastAPI(title="TapSnap API", version="0.1.0")
 
@@ -24,7 +25,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 
 def health():
     return {"ok": True}
 
-# ✅ one (and only one) root route that sends people to the admin UI
+# One root route → redirect to admin UI
 @app.get("/", include_in_schema=False)
 def root():
     return RedirectResponse(url="/admin", status_code=307)
@@ -34,15 +35,15 @@ app.include_router(merchants.router)
 app.include_router(transactions.router)
 app.include_router(webhooks.router)
 app.include_router(onboarding.router)
-app.include_router(admin_ui.router)         # /admin UI
-app.include_router(public_router.router)    # public site pages
+app.include_router(admin_ui.router)   # /admin UI
+app.include_router(public_router)     # ✅ public site pages (no ".router" here)
 
 # -----------------------------
 # Nicely formatted error pages
 # -----------------------------
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    # 401 -> show “Unauthorized” page and trigger Basic Auth box
+    # 401: show “Unauthorized” page and trigger Basic Auth box
     if exc.status_code == 401:
         return templates.TemplateResponse(
             "errors/error.html",
@@ -54,13 +55,15 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
             status_code=401,
             headers={"WWW-Authenticate": "Basic"},
         )
-    # 404 -> nice “Not Found”
+
+    # 404: friendly “Not Found”
     if exc.status_code == 404:
         return templates.TemplateResponse(
             "errors/404.html",
             {"request": request, "path": request.url.path},
             status_code=404,
         )
+
     # Everything else (403/405/etc.)
     return templates.TemplateResponse(
         "errors/error.html",
@@ -74,7 +77,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    # 422 -> invalid or missing input
+    # 422: invalid or missing input
     return templates.TemplateResponse(
         "errors/error.html",
         {
@@ -87,7 +90,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    # 500 -> anything unexpected
+    # 500: anything unexpected
     logging.exception("Unhandled error: %s", exc)
     return templates.TemplateResponse(
         "errors/error.html",
