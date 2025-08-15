@@ -5,6 +5,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from typing import Optional
+from datetime import datetime, timedelta
 import csv
 import io
 from fastapi.responses import Response
@@ -61,37 +63,56 @@ async def refund_tx(
         db.commit()
     return RedirectResponse(url="/admin/", status_code=303)
 
-@router.get("/transactions.csv", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
-def export_transactions_csv(db: Session = Depends(get_db)):
-    # Grab up to the latest 500 transactions (change if you like)
+@router.get("/transactions.csv", dependencies=[Depends(require_admin)])
+def export_transactions_csv(
+    start: Optional[str] = None,         # format: YYYY-MM-DD
+    end: Optional[str] = None,           # format: YYYY-MM-DD (inclusive)
+    status: Optional[str] = None,        # e.g. created / authorised / refunded
+    merchant_id: Optional[int] = None,   # optional: filter by a single merchant
+    db: Session = Depends(get_db),
+):
+    # Build base query
+    q = db.query(models.Transaction)
+
+    # Parse dates safely (YYYY-MM-DD). If invalid, ignore.
+    def parse_date(s: Optional[str]) -> Optional[datetime]:
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except Exception:
+            return None
+
+    start_dt = parse_date(start)
+    end_dt = parse_date(end)
+
+    if start_dt:
+        q = q.filter(models.Transaction.created_at >= start_dt)
+    if end_dt:
+        # make end date inclusive by adding 1 day and using "<"
+        q = q.filter(models.Transaction.created_at < (end_dt + timedelta(days=1)))
+
+    if status:
+        q = q.filter(models.Transaction.status == status)
+
+    if merchant_id:
+        q = q.filter(models.Transaction.merchant_id == merchant_id)
+
+    # Latest first, cap to 500 rows for easy download
     txs = (
-        db.query(models.Transaction)
-        .order_by(models.Transaction.id.desc())
-        .limit(500)
-        .all()
+        q.order_by(models.Transaction.id.desc())
+         .limit(500)
+         .all()
     )
 
-    # Build CSV in memory (safe for a few thousand rows)
+    # Build CSV in memory
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-
-    # Header row
     w.writerow(["id", "merchant_id", "amount_usd", "currency", "status", "psp_reference", "created_at"])
-
-    # Data rows
     for t in txs:
         amount_usd = f"{(t.amount_cents or 0) / 100:.2f}"
-        w.writerow([
-            t.id,
-            t.merchant_id,
-            amount_usd,
-            t.currency,
-            t.status,
-            t.psp_reference or "",
-            t.created_at,
-        ])
+        w.writerow([t.id, t.merchant_id, amount_usd, t.currency, t.status, t.psp_reference or "", t.created_at])
 
     csv_bytes = buf.getvalue()
     headers = {"Content-Disposition": 'attachment; filename="transactions.csv"'}
     return Response(content=csv_bytes, media_type="text/csv; charset=utf-8", headers=headers)
-

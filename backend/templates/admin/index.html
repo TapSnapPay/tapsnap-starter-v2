@@ -39,7 +39,32 @@
   <div class="card">
     <h2 style="margin-top:0">Recent Transactions</h2>
 <h2 style="margin-top:0">Recent Transactions</h2>
-<p><a class="btn" href="/admin/transactions.csv">Export CSV</a></p>
+<form method="get" action="/admin/transactions.csv" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin: 8px 0 12px;">
+  <div>
+    <label class="muted" style="display:block; font-size:12px;">Start (YYYY-MM-DD)</label>
+    <input name="start" type="date" />
+  </div>
+  <div>
+    <label class="muted" style="display:block; font-size:12px;">End (YYYY-MM-DD)</label>
+    <input name="end" type="date" />
+  </div>
+  <div>
+    <label class="muted" style="display:block; font-size:12px;">Status</label>
+    <select name="status">
+      <option value="">Any</option>
+      <option value="created">created</option>
+      <option value="authorised">authorised</option>
+      <option value="refunded">refunded</option>
+    </select>
+  </div>
+  <div>
+    <label class="muted" style="display:block; font-size:12px;">Merchant ID</label>
+    <input name="merchant_id" type="number" min="1" />
+  </div>
+  <button class="btn" type="submit">Export CSV</button>
+</form>
+
+
 <table style="margin-top:10px">
   <thead>
     <tr>
