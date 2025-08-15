@@ -39,24 +39,50 @@ def admin_home(request: Request, db: Session = Depends(get_db)):
     # merchants list (unchanged)
     merchants = db.query(models.Merchant).order_by(models.Merchant.id.desc()).all()
 
-    # ---- NEW: pagination + status filter ----
+    # ---- NEW: pagination + filters ----
     per_page = 10
 
-    # page number from the URL, default 1
+    # read query params
+    qp = request.query_params
     try:
-        page = int(request.query_params.get("page", "1"))
+        page = int(qp.get("page", "1"))
         if page < 1:
             page = 1
     except Exception:
         page = 1
 
-    # status filter from the URL (optional)
-    status = request.query_params.get("status")
+    status = qp.get("status") or None
+    merchant_id = qp.get("merchant_id") or None
+    from_str = qp.get("from") or None
+    to_str = qp.get("to") or None
+
     q = db.query(models.Transaction)
+
     if status:
         q = q.filter(models.Transaction.status == status)
 
-    # count, pages, and one page of results
+    if merchant_id:
+        try:
+            mid = int(merchant_id)
+            q = q.filter(models.Transaction.merchant_id == mid)
+        except Exception:
+            pass
+
+    # date range filtering by created_at
+    # from = inclusive midnight; to = inclusive to end-of-day
+    if from_str:
+        try:
+            start = datetime.strptime(from_str, "%Y-%m-%d")
+            q = q.filter(models.Transaction.created_at >= start)
+        except Exception:
+            pass
+    if to_str:
+        try:
+            end = datetime.strptime(to_str, "%Y-%m-%d") + timedelta(days=1)
+            q = q.filter(models.Transaction.created_at < end)
+        except Exception:
+            pass
+
     total = q.count()
     pages = max(1, (total + per_page - 1) // per_page)
     if page > pages:
@@ -79,7 +105,11 @@ def admin_home(request: Request, db: Session = Depends(get_db)):
             "pages": pages,
             "has_prev": page > 1,
             "has_next": page < pages,
+            # pass filters back to the template so inputs stay filled
             "status": status,
+            "merchant_id": merchant_id,
+            "from": from_str,
+            "to": to_str,
         },
     )
 
