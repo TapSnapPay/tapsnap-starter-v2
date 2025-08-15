@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, DateTime, Enum, Numeric, ForeignKey, func
+from sqlalchemy import String, Integer, Text, DateTime, Enum, Numeric, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Column, Integer, String, Text, DateTime
 # (add JSON or UniqueConstraint too if you plan to use them)
@@ -41,10 +41,12 @@ class Payout(Base):
 class WebhookEvent(Base):
     __tablename__ = "webhook_events"
 
-    id = Column(Integer, primary_key=True, index=True)
-    provider = Column(String(50), nullable=False)          # e.g. "adyen"
-    event_key = Column(String(128), nullable=False, unique=True)
-    signature = Column(String(256), nullable=True)
-    raw_json = Column(Text, nullable=False)
-    headers = Column(Text, nullable=True)                  # JSON-dumped headers
-    created_at = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)          # e.g. "adyen"
+    event_key: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    signature: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    raw_json: Mapped[str] = mapped_column(Text, nullable=False)                # raw body text
+    headers: Mapped[str | None] = mapped_column(Text, nullable=True)           # JSON-dumped headers
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

@@ -1,19 +1,17 @@
 # backend/app/api/routes/webhooks.py
-
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
-import hmac, hashlib, json
+import hmac, hashlib, json, os
 
 from ...db import SessionLocal
-from ...config import settings
 from ...models import WebhookEvent
-from ...security import require_webhook_auth, webhook_rate_limit
+from ...config import settings
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
-security = HTTPBasic()
+basic = HTTPBasic()
 
-# DB session per-request helper
+# --- DB session per request ---
 def get_db():
     db = SessionLocal()
     try:
@@ -21,49 +19,49 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/adyen",
-             dependencies=[Depends(require_webhook_auth), Depends(webhook_rate_limit())])
-async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
-    """
-    Hardening:
-    - Basic Auth (require_webhook_auth)
-    - HMAC signature check (X-Signature = hex(hmac_sha256(secret, raw_body)))
-    - Idempotency via Idempotency-Key header or SHA256(raw_body)
-    - Persist raw payload + headers
-    - Return {"ok": True}
-    """
+# --- Basic auth specifically for webhooks ---
+def require_webhook_auth(credentials: HTTPBasicCredentials = Depends(basic)):
+    if credentials.username != settings.WEBHOOK_USER or credentials.password != settings.WEBHOOK_PASS:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return True
 
-    # 1) Read the raw body EXACTLY as received
+@router.post("/adyen", dependencies=[Depends(require_webhook_auth)])
+async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
+    # 1) read raw body exactly
     raw_bytes: bytes = await request.body()
     raw_text: str = raw_bytes.decode("utf-8", "ignore")
 
-    # 2) Signature check
+    # 2) signature check
     secret = settings.WEBHOOK_SIGNING_SECRET or ""
-    expected_sig = hmac.new(secret.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
-    sent_sig = request.headers.get("X-Signature", "")
+    sent_sig = request.headers.get("x-signature", "")
 
-    # fail if missing or mismatch
+    expected_sig = hmac.new(
+        secret.encode("utf-8"),
+        raw_bytes,
+        hashlib.sha256
+    ).hexdigest()
+
+    # Fail if missing or mismatch
     if (not secret) or (not hmac.compare_digest(sent_sig, expected_sig)):
-        # 401 keeps it consistent with auth failures
+        # 401 keeps behavior consistent with other auth failures
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-    # 3) Idempotency key: prefer header, else hash of body
+    # 3) idempotency key: prefer header, else SHA256(raw body)
     event_key = request.headers.get("Idempotency-Key")
     if not event_key:
         event_key = hashlib.sha256(raw_bytes).hexdigest()
 
-    # 4) If we’ve already seen this key, return OK quickly (no duplicate work)
+    # 4) fast-return if we already stored this
     exists = (
         db.query(WebhookEvent)
-        .filter(WebhookEvent.event_key == event_key)
-        .first()
+          .filter(WebhookEvent.event_key == event_key)
+          .first()
     )
     if exists:
         return {"ok": True, "duplicate": True}
 
-    # 5) Persist the raw event for auditing/replays
+    # 5) persist raw event + headers
     headers_dict = dict(request.headers)
-
     evt = WebhookEvent(
         provider="adyen",
         event_key=event_key,
@@ -75,5 +73,5 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(evt)
 
-    # (Optional) business logic: update a payment, etc. — add later
-    return {"ok": True}
+    # 6) (Later) business logic to update payments
+    return {"ok": True, "saved": True, "id": evt.id}
