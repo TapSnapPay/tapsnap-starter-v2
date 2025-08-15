@@ -42,61 +42,51 @@ def checkout_form(
 def checkout_submit(
     request: Request,
     merchant_id: int = Form(...),
-    amount: float = Form(...),          # read dollars from the form
+    # accept all the ways the form may send amount
+    amount: Optional[float] = Form(None),
+    amount_dollars: Optional[float] = Form(None),
+    amount_cents: Optional[int] = Form(None),
     currency: str = Form("USD"),
     db: Session = Depends(get_db),
 ):
-    # --- basic checks ---
-    # 1) merchant must exist
+    # 1) basic checks
     m = db.get(models.Merchant, merchant_id)
     if not m:
         return templates.TemplateResponse(
             "public/checkout.html",
-            {
-                "request": request,
-                "error": "That merchant ID does not exist.",
-                "merchant_id": merchant_id,
-                "amount": amount,
-                "currency": currency,
-            },
+            {"request": request, "error": "That merchant ID does not exist.", "merchant_id": merchant_id, "currency": currency, "amount": amount},
             status_code=400,
         )
 
-    # 2) amount must be positive
+    # 2) normalize the amount
+    if amount is None:
+        if amount_dollars is not None:
+            amount = float(amount_dollars)
+        elif amount_cents is not None:
+            amount = round((amount_cents or 0) / 100.0, 2)
+
+    # 3) validate amount/currency
     if amount is None or amount <= 0:
         return templates.TemplateResponse(
             "public/checkout.html",
-            {
-                "request": request,
-                "error": "Please enter an amount greater than 0.",
-                "merchant_id": merchant_id,
-                "amount": amount,
-                "currency": currency,
-            },
+            {"request": request, "error": "Please enter an amount greater than 0.", "merchant_id": merchant_id, "currency": currency},
             status_code=400,
         )
 
-    # 3) allow only USD for now
-    if currency not in ("USD",):
+    if currency != "USD":
         return templates.TemplateResponse(
             "public/checkout.html",
-            {
-                "request": request,
-                "error": "Only USD is supported right now.",
-                "merchant_id": merchant_id,
-                "amount": amount,
-                "currency": currency,
-            },
+            {"request": request, "error": "Only USD is supported right now.", "merchant_id": merchant_id, "currency": currency},
             status_code=400,
         )
 
-    # convert dollars to cents safely
-    amount_cents = int(round(amount * 100))
+    # 4) convert to cents safely
+    amount_cents_final = int(round(amount * 100))
 
-    # create the transaction (simulate authorised)
+    # 5) create the transaction (simulate authorisation)
     tx = models.Transaction(
         merchant_id=merchant_id,
-        amount_cents=amount_cents,
+        amount_cents=amount_cents_final,
         currency=currency,
         status="authorised",
         psp_reference="PSP_TEST_PUBLIC",
@@ -105,10 +95,8 @@ def checkout_submit(
     db.commit()
     db.refresh(tx)
 
-    return templates.TemplateResponse(
-        "public/success.html",
-        {"request": request, "tx": tx},
-    )
+    return templates.TemplateResponse("public/success.html", {"request": request, "tx": tx})
+
 
 
 @router.get("/success", response_class=HTMLResponse)
