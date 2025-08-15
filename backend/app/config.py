@@ -1,22 +1,29 @@
-import os
-from dotenv import load_dotenv
+# backend/app/config.py
+from pydantic_settings import BaseSettings
+from pydantic import Field
 
-load_dotenv()
+class Settings(BaseSettings):
+    # --- Database ---
+    DATABASE_URL: str = Field(..., env="DATABASE_URL")
 
-class Settings:
-    APP_ENV: str = os.getenv("APP_ENV", "dev")
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret")
-    DATABASE_URL: str | None = os.getenv("DATABASE_URL")
+    # --- Admin auth (already working) ---
+    ADMIN_PASSWORD: str = Field(..., env="ADMIN_PASSWORD")
 
-    ADYEN_API_KEY: str | None = os.getenv("ADYEN_API_KEY")
-    ADYEN_CLIENT_KEY: str | None = os.getenv("ADYEN_CLIENT_KEY")
-    ADYEN_MERCHANT_ACCOUNT: str | None = os.getenv("ADYEN_MERCHANT_ACCOUNT")
-    ADYEN_HMAC_KEY: str | None = os.getenv("ADYEN_HMAC_KEY")
-    ADYEN_ENV: str = os.getenv("ADYEN_ENV", "test")
-    ADYEN_LIVE_PREFIX: str | None = os.getenv("ADYEN_LIVE_PREFIX")
-    ADYEN_PLATFORM_ACCOUNT: str | None = os.getenv("ADYEN_PLATFORM_ACCOUNT")
+    # Optional hardening knobs (safe defaults)
+    ADMIN_RATE_LIMIT: int = Field(60, env="ADMIN_RATE_LIMIT")
+    ADMIN_IP_ALLOWLIST: str = Field("", env="ADMIN_IP_ALLOWLIST")
 
-    WEBHOOK_USER: str = os.getenv("WEBHOOK_USER", "tapsnap")
-    WEBHOOK_PASS: str = os.getenv("WEBHOOK_PASS", "supersecret")
+    # --- Webhook basic auth ---
+    WEBHOOK_USER: str = Field("", env="WEBHOOK_USER")
+    WEBHOOK_PASS: str = Field("", env="WEBHOOK_PASS")
+
+    # --- NEW: Webhook HMAC secret (this is what was missing) ---
+    # If set, we will verify X-Signature = hex(hmac_sha256(secret, raw_body))
+    WEBHOOK_SIGNING_SECRET: str | None = Field(None, env="WEBHOOK_SIGNING_SECRET")
+
+    class Config:
+        # Optional .env support; env vars from Render still win
+        env_file = ".env"
+        extra = "ignore"  # ignore any extra envs you might have
 
 settings = Settings()
