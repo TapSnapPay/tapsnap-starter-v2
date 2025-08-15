@@ -25,9 +25,14 @@
   <td>{{ m.name }}</td>
   <td>{{ m.email }}</td>
   <td class="muted">{{ m.created_at }}</td>
-  <td>
-    <a class="btn" href="/checkout?merchant_id={{ m.id }}&amount=25&currency=USD">Collect $25</a>
-  </td>
+<td>
+  <a class="btn" href="/checkout?merchant_id={{ m.id }}&amount=25&currency=USD">Collect $25</a>
+  <button type="button" class="btn" style="margin-left:8px"
+          onclick="copyLink('/checkout?merchant_id={{ m.id }}&amount=25&currency=USD', this)">
+    Copy Pay Link
+  </button>
+</td>
+
 </tr>
       {% else %}
         <tr><td colspan="4" class="muted">No merchants yet</td></tr>
@@ -105,4 +110,29 @@
   {% endfor %}
   </tbody>
 </table>
+</table>
+
+<script>
+  // tiny helper to pre-fill filters and set sensible defaults
+  document.addEventListener('DOMContentLoaded', function () {
+    const qs = new URLSearchParams(location.search);
+
+    // Fill any fields from query string if present
+    ['from','to','status','merchant_id'].forEach((name) => {
+      const el = document.querySelector(`[name="${name}"]`);
+      if (el && qs.get(name)) el.value = qs.get(name);
+    });
+
+    // Default date range = last 7 days if left empty
+    const to = document.querySelector('[name="to"]');
+    const from = document.querySelector('[name="from"]');
+    if (to && !to.value) to.value = new Date().toISOString().slice(0,10);
+    if (from && !from.value) {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      from.value = d.toISOString().slice(0,10);
+    }
+  });
+</script>
+
 {% endblock %}
