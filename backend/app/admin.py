@@ -5,6 +5,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+import csv
+import io
+from fastapi.responses import Response
 
 from .security import require_admin
 from .db import SessionLocal
@@ -57,3 +60,38 @@ async def refund_tx(
         tx.status = "refunded"
         db.commit()
     return RedirectResponse(url="/admin/", status_code=303)
+
+@router.get("/transactions.csv", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def export_transactions_csv(db: Session = Depends(get_db)):
+    # Grab up to the latest 500 transactions (change if you like)
+    txs = (
+        db.query(models.Transaction)
+        .order_by(models.Transaction.id.desc())
+        .limit(500)
+        .all()
+    )
+
+    # Build CSV in memory (safe for a few thousand rows)
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+
+    # Header row
+    w.writerow(["id", "merchant_id", "amount_usd", "currency", "status", "psp_reference", "created_at"])
+
+    # Data rows
+    for t in txs:
+        amount_usd = f"{(t.amount_cents or 0) / 100:.2f}"
+        w.writerow([
+            t.id,
+            t.merchant_id,
+            amount_usd,
+            t.currency,
+            t.status,
+            t.psp_reference or "",
+            t.created_at,
+        ])
+
+    csv_bytes = buf.getvalue()
+    headers = {"Content-Disposition": 'attachment; filename="transactions.csv"'}
+    return Response(content=csv_bytes, media_type="text/csv; charset=utf-8", headers=headers)
+
