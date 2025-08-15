@@ -1,37 +1,60 @@
+# backend/app/security.py
 import os
-import logging
-from fastapi import Depends, HTTPException, status
+import secrets
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from collections import deque
+import time
 
-# ----- Credentials from env -----
-AUTH_USER = "tapsnap"  # admin username is fixed as "tapsnap"
-AUTH_PASS = os.getenv("ADMIN_PASSWORD", "")
-
-WEBHOOK_USER = os.getenv("WEBHOOK_USER", "tapsnap")
-WEBHOOK_PASS = os.getenv("WEBHOOK_PASS", "")
-
-# ----- Minimal logging so you can confirm what's loaded -----
-logging.getLogger().setLevel(logging.INFO)
-logging.info(f"[ADMIN] loaded user={AUTH_USER}, pwd_len={len(AUTH_PASS)}")
-
-# The ONLY BasicAuth object we use everywhere
 http_basic = HTTPBasic()
 
-def _check(creds: HTTPBasicCredentials, exp_user: str, exp_pass: str) -> None:
-    """Reusable checker for Basic auth."""
-    if creds.username != exp_user or creds.password != exp_pass:
+# ---- Admin Basic Auth ----
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "changeme")
+
+async def require_admin(credentials: HTTPBasicCredentials = Depends(http_basic)):
+    # Compare in a timing-safe way
+    user_ok = secrets.compare_digest(credentials.username, ADMIN_USER)
+    pass_ok = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+    if not (user_ok and pass_ok):
+        # Tell browser to show Basic Auth prompt
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authorized",
-            headers={"WWW-Authenticate": "Basic"},
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": 'Basic realm="Admin"'},
         )
-
-def require_admin(credentials: HTTPBasicCredentials = Depends(http_basic)) -> bool:
-    """Protects /admin UI."""
-    _check(credentials, AUTH_USER, AUTH_PASS)
     return True
 
-def require_webhook(credentials: HTTPBasicCredentials = Depends(http_basic)) -> bool:
-    """Protects /webhooks endpoint (already used)."""
-    _check(credentials, WEBHOOK_USER, WEBHOOK_PASS)
+# ---- Webhook Basic Auth ----
+WEBHOOK_USER = os.getenv("WEBHOOK_USER", "tapsnap")
+WEBHOOK_PASS = os.getenv("WEBHOOK_PASS", "supersecret4321$")
+
+async def require_webhook_auth(credentials: HTTPBasicCredentials = Depends(http_basic)):
+    user_ok = secrets.compare_digest(credentials.username, WEBHOOK_USER)
+    pass_ok = secrets.compare_digest(credentials.password, WEBHOOK_PASS)
+    if not (user_ok and pass_ok):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": 'Basic realm="Webhook"'},
+        )
     return True
+
+# ---- Tiny in-memory rate limiter (per IP) for webhooks ----
+_visits = {}  # ip -> deque[timestamps]
+
+def webhook_rate_limit(max_requests: int = 10, window_seconds: int = 60):
+    async def _limiter(request: Request):
+        ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        dq = _visits.get(ip)
+        if dq is None:
+            dq = deque()
+            _visits[ip] = dq
+        # drop old timestamps outside the window
+        while dq and (now - dq[0] > window_seconds):
+            dq.popleft()
+        dq.append(now)
+        if len(dq) > max_requests:
+            raise HTTPException(status_code=429, detail="Too many requests")
+    return _limiter

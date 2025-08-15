@@ -1,3 +1,5 @@
+from ...security import require_webhook_auth, webhook_rate_limit
+from fastapi import Depends
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
@@ -50,3 +52,9 @@ async def adyen_notifications(payload: WebhookNotification, request: Request, ok
                 pass
 
     return {"status": "received"}
+
+@router.post("/adyen", dependencies=[Depends(require_webhook_auth), Depends(webhook_rate_limit())])
+async def adyen_webhook(payload: dict, request: Request):
+    # ... existing logic ...
+    return {"received": True}
+
