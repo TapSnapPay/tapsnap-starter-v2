@@ -1,46 +1,98 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Transaction {{ tx.id }} • Admin</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Transaction #{{ tx.id }} • Admin</title>
+
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; max-width: 720px; margin: 40px auto; }
-    header { display:flex; align-items:center; gap:12px; }
+    :root {
+      --brand:#1e40af;
+      --muted:#6b7280;
+      --danger:#991b1b;
+      --danger-bg:#fee2e2;
+      --ok-bg:#ecfeff;
+      --chip:#eef2ff;
+      --chip-border:#e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 0 auto;
+      padding: 20px;
+      max-width: 720px;
+      color: #111827;
+      background: #fff;
+    }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
     h1 { font-size: 22px; margin: 0; }
-    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
-    .tag { display:inline-block; padding:2px 8px; border-radius:12px; background:#eef2ff; color:#1e40af; font-size:12px; }
-    .btn { display:inline-block; padding:10px 14px; border-radius:10px; text-decoration:none; border:1px solid #ddd; }
-    .btn-danger { background:#fee2e2; border-color:#fecaca; color:#991b1b; }
+    a.btn, button.btn {
+      display:inline-block; padding:10px 14px; border-radius:10px;
+      text-decoration:none; border:1px solid #d1d5db; background:#fff; color:#111827;
+      cursor:pointer;
+    }
+    button.btn { font: inherit; }
+    .btn-danger { color: var(--danger); background: var(--danger-bg); border-color:#fecaca; }
+    .btn[disabled] { opacity:.6; cursor:not-allowed; }
+    .tag {
+      display:inline-block; margin-left:10px; font-size:12px; padding:6px 10px;
+      background: var(--chip); border:1px solid var(--chip-border); border-radius:999px; color:#1f2937;
+    }
+    .notice {
+      margin:16px 0; padding:10px 12px; border:1px solid #bae6fd; background: var(--ok-bg);
+      border-radius:10px;
+    }
+    table { width:100%; border-collapse:collapse; margin: 16px 0; }
+    th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #e5e7eb; }
+    th { color: var(--muted); width: 160px; font-weight:600; }
     .row { display:flex; gap:12px; align-items:center; }
-    .ok { background:#ecfeff; border:1px solid #a5f3fc; padding:8px 10px; border-radius:10px; margin:10px 0; }
   </style>
 </head>
 <body>
-  <header>
-    <a class="btn" href="/admin/">&larr; Back to Admin</a>
+
+<header>
+  <a class="btn" href="/admin">← Back to Admin</a>
+  <div class="row">
     <h1>Transaction #{{ tx.id }}</h1>
     <span class="tag">{{ tx.status }}</span>
-  </header>
+  </div>
+</header>
 
-  {% if request.query_params.get("ok") %}
-  <div class="ok">Refund requested. Waiting for PSP webhook to mark it as <strong>refunded</strong>.</div>
-  {% endif %}
+{# Optional success flash via query param ?ok=1 #}
+{% if request.query_params.get("ok") %}
+  <div class="notice">Refund requested. Waiting for PSP webhook to mark it as <strong>refunded</strong>.</div>
+{% endif %}
 
-  <table>
-    <tr><th>Merchant</th><td>{{ tx.merchant_id }}</td></tr>
-    <tr><th>Amount</th><td>{{ "%.2f"|format((tx.amount_cents or 0)/100.0) }} {{ tx.currency }}</td></tr>
-    <tr><th>PSP reference</th><td>{{ tx.psp_reference or "-" }}</td></tr>
-    <tr><th>Created</th><td>{{ tx.created_at }}</td></tr>
-  </table>
+<table>
+  <tr><th>Merchant</th><td>{{ tx.merchant_id }}</td></tr>
+  <tr>
+    <th>Amount</th>
+    <td>
+      {{ "%0.2f"|format((tx.amount_cents or 0) / 100.0) }} {{ tx.currency }}
+    </td>
+  </tr>
+  <tr><th>PSP reference</th><td>{{ tx.psp_reference or "–" }}</td></tr>
+  <tr><th>Created</th><td>{{ tx.created_at }}</td></tr>
+</table>
 
-  {% if tx.status != "refund_requested" and tx.status != "refunded" %}
-    <form method="post" action="/admin/tx/{{ tx.id }}/refund">
-      <button class="btn btn-danger" type="submit">Refund</button>
-    </form>
-  {% else %}
-    <p>Refund is already <strong>{{ tx.status }}</strong>.</p>
-  {% endif %}
+{# Refund controls #}
+{% if tx.status == "refunded" %}
+  <p>Refund is already <strong>{{ tx.status }}</strong>.</p>
+
+{% elif tx.status == "refund_requested" %}
+  <p>A refund has been requested. This page will show <strong>refunded</strong> after the PSP webhook updates it.</p>
+  <form method="post" action="/admin/tx/{{ tx.id }}/refund">
+    <button class="btn btn-danger" type="submit" disabled>Refund requested…</button>
+  </form>
+
+{% else %}
+  <form method="post" action="/admin/tx/{{ tx.id }}/refund">
+    <button class="btn btn-danger" type="submit"
+            onclick="return confirm('Request a refund for this transaction?');">
+      Refund
+    </button>
+  </form>
+{% endif %}
+
 </body>
 </html>

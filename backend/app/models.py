@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, List
 
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, func
 from sqlalchemy.sql import func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,22 @@ class Transaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     merchant: Mapped[Merchant] = relationship("Merchant", back_populates="transactions")
+    refunds: Mapped[List["Refund"]] = relationship("Refund", back_populates="tx")
+
+# --- NEW: simple Refund model ---
+class Refund(Base):
+    __tablename__ = "refunds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tx_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    status: Mapped[str] = mapped_column(String(20), default="requested")  # requested|refunded|failed
+    psp_reference: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    tx: Mapped["Transaction"] = relationship("Transaction", back_populates="refunds")
+
 
 # ---------- Payouts ----------
 class Payout(Base):

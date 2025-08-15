@@ -9,6 +9,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 import csv
 import io
+from fastapi import Form
 from fastapi.responses import Response
 
 from .security import require_admin, rate_limit_admin, check_admin_ip
@@ -239,4 +240,37 @@ def request_refund(tx_id: int, request: Request, db: Session = Depends(get_db)):
     db.commit()
     # back to the tx page with a little query string to show a message
     return RedirectResponse(url=f"/admin/tx/{tx_id}?ok=1", status_code=303)
+
+@router.post("/tx/{tx_id}/refund", response_class=RedirectResponse, include_in_schema=False)
+def request_refund(
+    tx_id: int,
+    amount_cents: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
+):
+    tx = db.get(models.Transaction, tx_id)
+    if not tx:
+        raise HTTPException(404, "Transaction not found")
+
+    # default to full amount if form didn’t specify
+    amt = amount_cents if (amount_cents is not None and amount_cents > 0) else tx.amount_cents
+
+    # write a "refund requested" record
+    r = models.Refund(
+        tx_id=tx.id,
+        amount_cents=amt,
+        currency=tx.currency or "USD",
+        status="requested",
+    )
+
+    # reflect requested state on the transaction
+    tx.status = "refund_requested"
+
+    db.add(r)
+    db.add(tx)
+    db.commit()
+    db.refresh(r)
+
+    # back to the tx page
+    return RedirectResponse(url=f"/admin/tx/{tx.id}?refund={r.id}", status_code=303)
+
 

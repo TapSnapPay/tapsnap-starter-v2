@@ -146,14 +146,47 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
             continue
 
         # --- REFUND ---
-        if event_code == "REFUND":
-            if success:
-                tx.status = "refunded"
-                if psp_ref:
-                    tx.psp_reference = psp_ref
-                db.add(tx)
-                handled += 1
-            continue
+if event_code == "REFUND":
+    if success:
+        tx.status = "refunded"
+        if psp_ref:
+            tx.psp_reference = psp_ref
+
+        # NEW: mark the newest refund row for this tx as refunded
+        rf = (
+            db.query(models.Refund)
+            .filter(models.Refund.tx_id == tx.id)
+            .order_by(models.Refund.id.desc())
+            .first()
+        )
+        if rf:
+            rf.status = "refunded"
+            if psp_ref:
+                rf.psp_reference = psp_ref
+            db.add(rf)
+
+    else:
+        # refund failed
+        if psp_ref:
+            tx.psp_reference = psp_ref
+
+        # optionally mark the latest refund row as failed
+        rf = (
+            db.query(models.Refund)
+            .filter(models.Refund.tx_id == tx.id)
+            .order_by(models.Refund.id.desc())
+            .first()
+        )
+        if rf:
+            rf.status = "failed"
+            if psp_ref:
+                rf.psp_reference = psp_ref
+            db.add(rf)
+
+    db.add(tx)
+    handled += 1
+    continue
+
 
     # Save DB changes only if we actually touched something
     if handled:
