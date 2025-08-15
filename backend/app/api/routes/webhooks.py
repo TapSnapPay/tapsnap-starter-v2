@@ -74,58 +74,98 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(evt)
 
-    # -- 5) BUSINESS LOGIC: update Transaction on AUTHORISATION
-    handled = 0
+   # -- 5) BUSINESS LOGIC: update Transaction on AUTHORISATION / CAPTURE / REFUND
+handled = 0
+
+# Turn the raw JSON text into a Python dict (or {} if it’s not JSON)
+try:
+    payload = json.loads(raw_text) if raw_text else {}
+except json.JSONDecodeError:
+    payload = {}
+
+# Helper: yield each NotificationRequestItem, no matter the shape
+def iter_notification_items(p):
+    if isinstance(p, dict):
+        if "notificationItems" in p and isinstance(p["notificationItems"], list):
+            for wrapper in p["notificationItems"]:
+                if isinstance(wrapper, dict) and "NotificationRequestItem" in wrapper:
+                    yield wrapper["NotificationRequestItem"]
+                else:
+                    # already the inner item
+                    yield wrapper
+        elif "NotificationRequestItem" in p:
+            yield p["NotificationRequestItem"]
+        else:
+            yield p
+    elif isinstance(p, list):
+        for item in p:
+            yield item
+
+# Walk the items and update our Transaction
+for nri in iter_notification_items(payload):
+    nri = nri or {}
+    event_code   = str(nri.get("eventCode", "")).upper()
+    success      = str(nri.get("success", "")).lower() == "true"
+    psp_ref      = nri.get("pspReference") or nri.get("psp_reference")
+    merchant_ref = str(nri.get("merchantReference", ""))
+
+    # Find tx_id inside merchantReference like "tx_123"
+    m = re.search(r"tx_(\d+)", merchant_ref)
+    if not m:
+        continue
     try:
-        payload = json.loads(raw_text) if raw_text else {}
-    except json.JSONDecodeError:
-        payload = {}
+        tx_id = int(m.group(1))
+    except ValueError:
+        continue
 
-    # Adyen test payload shape:
-    # {"notificationItems":[{"NotificationRequestItem":{ ... fields ... }}]}
-    items = []
-    if isinstance(payload, dict):
-        if "notificationItems" in payload and isinstance(payload["notificationItems"], list):
-            items = payload["notificationItems"]
-        # fallbacks for different shapes (be forgiving)
-        elif "NotificationRequestItem" in payload:
-            items = [payload]
+    tx = db.get(models.Transaction, tx_id)
+    if not tx:
+        continue
 
-    for item in items:
-        nri = item.get("NotificationRequestItem", item) if isinstance(item, dict) else {}
-        event_code = str(nri.get("eventCode", "")).upper()
-        success = str(nri.get("success", "")).lower() == "true"
-        psp_ref = nri.get("pspReference") or nri.get("psp_reference")
-        merchant_ref = str(nri.get("merchantReference", ""))
+    # --- AUTHORISATION ---
+    if event_code == "AUTHORISATION":
+        tx.status = "authorised" if success else "failed"
+        if psp_ref:
+            tx.psp_reference = psp_ref
 
-        # Extract tx_id from merchantReference like "tx_123"
-        tx_id = None
-        m = re.search(r"tx_(\d+)", merchant_ref)
-        if m:
-            try:
-                tx_id = int(m.group(1))
-            except ValueError:
-                tx_id = None
+        # If Adyen sent amount in minor units, sync it (optional)
+        amt = nri.get("amount") or {}
+        if isinstance(amt, dict):
+            if isinstance(amt.get("value"), int):
+                tx.amount_cents = int(amt["value"])
+            if isinstance(amt.get("currency"), str):
+                tx.currency = amt["currency"]
 
-        # Update our Transaction only if we can resolve it
-        if tx_id is not None and event_code == "AUTHORISATION":
-            tx = db.get(models.Transaction, tx_id)
-            if tx:
-                tx.status = "authorised" if success else "failed"
-                if psp_ref:
-                    tx.psp_reference = psp_ref
+        db.add(tx)
+        handled += 1
+        continue
 
-                # If Adyen sends amount in minor units, sync it (optional)
-                amt = nri.get("amount", {}) if isinstance(nri.get("amount"), dict) else {}
-                if "value" in amt and isinstance(amt["value"], int):
-                    tx.amount_cents = int(amt["value"])
-                if "currency" in amt and isinstance(amt["currency"], str):
-                    tx.currency = amt["currency"]
+    # --- CAPTURE ---
+    if event_code == "CAPTURE":
+        # If capture succeeded, mark captured; if not, leave as-is or mark failed
+        if success:
+            tx.status = "captured"
+        else:
+            tx.status = "failed"
+        if psp_ref:
+            tx.psp_reference = psp_ref
+        db.add(tx)
+        handled += 1
+        continue
 
-                db.add(tx)
-                handled += 1
+    # --- REFUND ---
+    if event_code == "REFUND":
+        # If refund succeeded, mark refunded; if not, leave as-is
+        if success:
+            tx.status = "refunded"
+        if psp_ref:
+            tx.psp_reference = psp_ref
+        db.add(tx)
+        handled += 1
+        continue
 
-    if handled:
-        db.commit()
+# Save DB changes only if we actually touched something
+if handled:
+    db.commit()
 
-    return {"ok": True, "saved": True, "handled": handled}
+return {"ok": True, "saved": True, "handled": handled}
