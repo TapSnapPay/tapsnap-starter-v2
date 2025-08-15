@@ -1,63 +1,67 @@
+# backend/app/main.py
 from fastapi import FastAPI, Request
 from .db import init_db
 from .api.routes import merchants, transactions, webhooks, onboarding
 from . import admin as admin_ui
-from .public import router as public_router
+from .public import routes as public_router
+
 from fastapi.responses import RedirectResponse
-from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from fastapi.templating import Jinja2Templates
 from pathlib import Path
 import logging
 
-
 app = FastAPI(title="TapSnap API", version="0.1.0")
+
+# create tables on startup if needed
 init_db()
 
+# templates for error pages
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 
-@app.get("/healthz")
-def healthz():
+@app.get("/health")
+def health():
     return {"ok": True}
 
+# ✅ one (and only one) root route that sends people to the admin UI
 @app.get("/", include_in_schema=False)
 def root():
     return RedirectResponse(url="/admin", status_code=307)
 
-
+# Mount feature routers
 app.include_router(merchants.router)
 app.include_router(transactions.router)
 app.include_router(webhooks.router)
 app.include_router(onboarding.router)
-app.include_router(admin_ui.router)
-app.include_router(public_router)
+app.include_router(admin_ui.router)         # /admin UI
+app.include_router(public_router.router)    # public site pages
 
-@app.get("/", include_in_schema=False)
-def root():
-    # send anyone who visits the root to the admin UI
-    return RedirectResponse(url="/admin", status_code=307)
-
+# -----------------------------
+# Nicely formatted error pages
+# -----------------------------
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    # 401: show “Unauthorized” and trigger browser login box
+    # 401 -> show “Unauthorized” page and trigger Basic Auth box
     if exc.status_code == 401:
         return templates.TemplateResponse(
             "errors/error.html",
-            {"request": request, "status_code": 401, "detail": "Unauthorized"},
+            {
+                "request": request,
+                "status_code": 401,
+                "detail": "Unauthorized",
+            },
             status_code=401,
             headers={"WWW-Authenticate": "Basic"},
         )
-
-    # 404: nice “Not found” page
+    # 404 -> nice “Not Found”
     if exc.status_code == 404:
         return templates.TemplateResponse(
             "errors/404.html",
             {"request": request, "path": request.url.path},
             status_code=404,
         )
-
-    # Any other HTTP error (403/405/etc.)
+    # Everything else (403/405/etc.)
     return templates.TemplateResponse(
         "errors/error.html",
         {
@@ -70,19 +74,27 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    # 422: bad/missing form or query fields
+    # 422 -> invalid or missing input
     return templates.TemplateResponse(
         "errors/error.html",
-        {"request": request, "status_code": 422, "detail": "Invalid or missing input."},
+        {
+            "request": request,
+            "status_code": 422,
+            "detail": "Invalid or missing input.",
+        },
         status_code=422,
     )
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    # 500: anything unexpected
+    # 500 -> anything unexpected
     logging.exception("Unhandled error: %s", exc)
     return templates.TemplateResponse(
         "errors/error.html",
-        {"request": request, "status_code": 500, "detail": "Something went wrong on our side."},
+        {
+            "request": request,
+            "status_code": 500,
+            "detail": "Something went wrong on our side.",
+        },
         status_code=500,
     )
