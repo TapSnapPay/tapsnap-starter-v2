@@ -27,10 +27,9 @@
   <td class="muted">{{ m.created_at }}</td>
 <td>
   <a class="btn" href="/checkout?merchant_id={{ m.id }}&amount=25&currency=USD">Collect $25</a>
-  <button type="button" class="btn" style="margin-left:8px"
-          onclick="copyLink('/checkout?merchant_id={{ m.id }}&amount=25&currency=USD', this)">
-    Copy Pay Link
-  </button>
+  <button type="button" class="btn" style="margin-left:6px" onclick="customCollect({{ m.id }})">
+  Collect custom
+</button>
 </td>
 
 </tr>
@@ -181,6 +180,21 @@
       alert('Could not copy. Here is the link:\n' + window.location.origin + url);
     }
   }
+function customCollect(mid) {
+  const a = prompt("Enter amount in USD (e.g., 12.34)");
+  if (!a) return;
+  const amount = Number(a);
+  if (!isFinite(amount) || amount <= 0) {
+    alert("Please enter a valid amount (e.g., 12.34).");
+    return;
+  }
+  const url = `/checkout?merchant_id=${mid}&amount=${amount}&currency=USD`;
+  // Option 1: go straight to checkout
+  window.location.href = url;
+
+  // (If you ever want to copy the link instead, replace the line above with:)
+  // copyLink(url, { textContent: 'Copy' });
+}
 </script>
 
 {% endblock %}

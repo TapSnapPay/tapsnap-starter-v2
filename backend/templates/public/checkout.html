@@ -13,6 +13,9 @@
 </head>
 <body>
   <h1>Checkout</h1>
+{% if merchant %}
+  <p class="muted">Paying <strong>{{ merchant.name }}</strong> (Merchant #{{ merchant.id }})</p>
+{% endif %}
 {% if error %}
   <div style="background:#ffecec;border:1px solid #ffb3b3;color:#a40000;padding:10px;border-radius:6px;margin:10px 0;">
     {{ error }}
