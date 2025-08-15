@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -95,7 +95,7 @@ def checkout_submit(
     db.commit()
     db.refresh(tx)
 
-    return templates.TemplateResponse("public/success.html", {"request": request, "tx": tx})
+    return RedirectResponse(url=f"/success?tx_id={tx.id}", status_code=303)
 
 
 
