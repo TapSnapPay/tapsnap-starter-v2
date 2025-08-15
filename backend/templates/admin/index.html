@@ -113,26 +113,16 @@
 </table>
 
 <script>
-  // tiny helper to pre-fill filters and set sensible defaults
-  document.addEventListener('DOMContentLoaded', function () {
-    const qs = new URLSearchParams(location.search);
-
-    // Fill any fields from query string if present
-    ['from','to','status','merchant_id'].forEach((name) => {
-      const el = document.querySelector(`[name="${name}"]`);
-      if (el && qs.get(name)) el.value = qs.get(name);
-    });
-
-    // Default date range = last 7 days if left empty
-    const to = document.querySelector('[name="to"]');
-    const from = document.querySelector('[name="from"]');
-    if (to && !to.value) to.value = new Date().toISOString().slice(0,10);
-    if (from && !from.value) {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      from.value = d.toISOString().slice(0,10);
+  async function copyLink(url, btn) {
+    try {
+      await navigator.clipboard.writeText(window.location.origin + url);
+      const old = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = old; }, 1200);
+    } catch (e) {
+      alert('Could not copy. Here is the link:\n' + window.location.origin + url);
     }
-  });
+  }
 </script>
 
 {% endblock %}
