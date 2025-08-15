@@ -50,17 +50,19 @@ class Payout(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# inside backend/app/models.py
+from sqlalchemy import Column, Integer, String, DateTime, Text, func
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
 class WebhookEvent(Base):
-    """
-    Stores every webhook we accept so we can dedupe and replay if needed.
-    event_key: Idempotency-Key header if present, else sha256(body)
-    """
     __tablename__ = "webhook_events"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    provider: Mapped[str] = mapped_column(String(50), nullable=False)   # e.g., "adyen"
-    event_key: Mapped[str] = mapped_column(String(256), nullable=False, unique=True, index=True)
-    signature: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
-    raw_json: Mapped[str] = mapped_column(Text, nullable=False)
-    headers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(50), nullable=False)                 # e.g. "adyen"
+    event_key = Column(String(256), nullable=False, unique=True)  # idempotency key (header or body hash)
+    signature = Column(String(128), nullable=True)                # hex HMAC
+    raw_json = Column(Text, nullable=False)                       # raw request body
+    headers = Column(Text, nullable=True)                         # JSON-dumped headers
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
