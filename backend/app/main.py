@@ -40,36 +40,37 @@ def root():
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-# If it's a 401, include the Basic-Auth challenge so the browser shows the login box
-if exc.status_code == 401:
-    return templates.TemplateResponse(
-        "errors/error.html",
-        {
-            "request": request,
-            "status_code": 401,
-            "detail": "Unauthorized",
-        },
-        status_code=401,
-        headers={"WWW-Authenticate": "Basic"},
-    )
+    # 401: show “Unauthorized” and trigger browser login box
+    if exc.status_code == 401:
+        return templates.TemplateResponse(
+            "errors/error.html",
+            {"request": request, "status_code": 401, "detail": "Unauthorized"},
+            status_code=401,
+            headers={"WWW-Authenticate": "Basic"},
+        )
 
-    # Pretty 404 page
+    # 404: nice “Not found” page
     if exc.status_code == 404:
         return templates.TemplateResponse(
             "errors/404.html",
             {"request": request, "path": request.url.path},
             status_code=404,
         )
-    # Other HTTP errors (e.g., 401/403/405)
+
+    # Any other HTTP error (403/405/etc.)
     return templates.TemplateResponse(
         "errors/error.html",
-        {"request": request, "status_code": exc.status_code, "detail": getattr(exc, "detail", "")},
+        {
+            "request": request,
+            "status_code": exc.status_code,
+            "detail": getattr(exc, "detail", ""),
+        },
         status_code=exc.status_code,
     )
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    # This catches things like missing required query/body fields (422)
+    # 422: bad/missing form or query fields
     return templates.TemplateResponse(
         "errors/error.html",
         {"request": request, "status_code": 422, "detail": "Invalid or missing input."},
@@ -78,7 +79,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    # Catch-all for unexpected errors (500)
+    # 500: anything unexpected
     logging.exception("Unhandled error: %s", exc)
     return templates.TemplateResponse(
         "errors/error.html",
