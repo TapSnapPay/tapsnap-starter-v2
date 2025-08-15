@@ -1,5 +1,7 @@
 from sqlalchemy import String, Integer, DateTime, Enum, Numeric, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, Text, DateTime
+# (add JSON or UniqueConstraint too if you plan to use them)
 from .db import Base
 from sqlalchemy import Text
 from datetime import datetime
@@ -40,11 +42,9 @@ class WebhookEvent(Base):
     __tablename__ = "webhook_events"
 
     id = Column(Integer, primary_key=True, index=True)
-    provider = Column(String(50), nullable=False)                      # e.g., "adyen" (or "test")
-    event_key = Column(String(128), nullable=False, unique=True)       # idempotency key (or body hash)
-    signature = Column(String(256), nullable=True)                     # what the sender sent
-    raw_json = Column(Text, nullable=False)                            # full raw body
-    headers = Column(Text, nullable=True)                              # headers as JSON text
-    status = Column(String(20), nullable=False, default="received")    # received/processed/etc
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    processed_at = Column(DateTime, nullable=True)
+    provider = Column(String(50), nullable=False)          # e.g. "adyen"
+    event_key = Column(String(128), nullable=False, unique=True)
+    signature = Column(String(256), nullable=True)
+    raw_json = Column(Text, nullable=False)
+    headers = Column(Text, nullable=True)                  # JSON-dumped headers
+    created_at = Column(DateTime, default=datetime.utcnow)
