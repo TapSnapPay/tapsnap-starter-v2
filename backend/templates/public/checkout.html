@@ -26,11 +26,11 @@
       amount_cents.value = Number.isFinite(a) ? Math.round(a * 100) : 0;
     ">
       <label for="merchant_id">Merchant ID</label>
-      <input id="merchant_id" name="merchant_id" type="number"
+      <input id="merchant_id" name="merchant_id" type="number" min="1"
              value="{{ merchant_id }}" required readonly />
 
       <label for="amount_dollars">Amount (USD $)</label>
-      <input id="amount_dollars" type="number" step="0.01" min="0"
+      <input id="amount_dollars" type="number" step="0.01" min="0.01"
              value="{{ display_amount }}" required />
 
       <!-- Hidden field the server expects -->
@@ -39,7 +39,7 @@
 
       <label for="currency">Currency</label>
       <input id="currency" name="currency" type="text"
-             value="{{ currency }}" required readonly />
+             value="{{ currency or 'USD' }}" required readonly />
 
       <button type="submit">Pay</button>
     </form>
