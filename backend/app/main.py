@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from .db import init_db
 from .api.routes import merchants, transactions, webhooks, onboarding
 from . import admin as admin_ui
-from .public import router as public_router
+from .public.routes import router as public_router
 
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
