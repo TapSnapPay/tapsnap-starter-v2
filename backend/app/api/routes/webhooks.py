@@ -1,18 +1,16 @@
-from ...security import require_webhook_auth, webhook_rate_limit
-from fastapi import Depends
+# backend/app/routes/webhooks.py
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
-from ...db import SessionLocal
-from ...schemas import WebhookNotification
-from ... import models
-from ...config import settings
-from ...services import adyen
-import os, json, hmac, hashlib
+import hmac, hashlib, json, os
 
-router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])  # Adyen notifications
-security = HTTPBasic()
+from ..db import SessionLocal
+from .. import models
+from ..config import settings
+from ..security import require_webhook_auth, webhook_rate_limit  # you added these earlier
 
+router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
+
+# --- DB session helper --------------------------------------------------------
 def get_db():
     db = SessionLocal()
     try:
@@ -20,51 +18,65 @@ def get_db():
     finally:
         db.close()
 
-def require_basic(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != settings.WEBHOOK_USER or credentials.password != settings.WEBHOOK_PASS:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return True
-
-@router.post("/adyen")  # full path: /api/v1/webhooks/adyen
+# --- Adyen-style webhook endpoint --------------------------------------------
+@router.post(
+    "/adyen",
+    dependencies=[
+        Depends(require_webhook_auth),   # Basic Auth: WEBHOOK_USER / WEBHOOK_PASS
+        Depends(webhook_rate_limit())    # simple rate-limit you added
+    ],
+)
 async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
-    # 1) Read raw body
-    raw_bytes = await request.body()
-    raw_text = raw_bytes.decode("utf-8", "ignore")
-    headers_dict = dict(request.headers)
+    """
+    Secured webhook:
+    - Basic Auth (already enforced by dependency)
+    - HMAC signature check via WEBHOOK_SIGNING_SECRET
+    - Idempotency (ignore duplicates)
+    - Persist raw event for auditing/replay
+    """
 
-    # 2) Signature check (X-Signature is hex(hmac_sha256(secret, raw_body)))
-    secret = os.getenv("WEBHOOK_SIGNING_SECRET", "")
+    # 1) Read the raw body EXACTLY as sent
+    raw_bytes: bytes = await request.body()
+    raw_text: str = raw_bytes.decode("utf-8", "ignore")
+
+    # Normalize headers to lower-case for easy lookups
+    hdrs = {k.lower(): v for k, v in request.headers.items()}
+
+    # 2) Verify HMAC SHA-256 signature (header: X-Signature)
+    secret = settings.WEBHOOK_SIGNING_SECRET or os.getenv("WEBHOOK_SIGNING_SECRET", "")
+    sent_sig = hdrs.get("x-signature", "")
     expected_sig = hmac.new(secret.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
-    sent_sig = headers_dict.get("x-signature", "")
-
-    # Still keep your Basic Auth if you already had it via a dependency
 
     if not secret or not hmac.compare_digest(sent_sig, expected_sig):
-        # Fail if missing/invalid signature
+        # if the signature is missing/wrong -> 401
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-    # 3) Idempotency key: header first, else hash of body
-    event_key = headers_dict.get("idempotency-key")
+    # 3) Build an idempotency key.
+    # Prefer the header "Idempotency-Key"; otherwise hash the body.
+    event_key = hdrs.get("idempotency-key", "")
     if not event_key:
         event_key = hashlib.sha256(raw_bytes).hexdigest()
 
-    # 4) If we've already seen this event_key, return OK quickly
-    exists = db.query(models.WebhookEvent).filter(models.WebhookEvent.event_key == event_key).first()
+    # 4) If we’ve already seen this event_key, return OK quickly (no duplicate work)
+    exists = (
+        db.query(models.WebhookEvent)
+        .filter(models.WebhookEvent.event_key == event_key)
+        .first()
+    )
     if exists:
         return {"ok": True, "duplicate": True}
 
-    # 5) Save the raw event
+    # 5) Persist the raw event for auditing / replay
     evt = models.WebhookEvent(
         provider="adyen",
         event_key=event_key,
-        signature=sent_sig,
+        signature_sent=sent_sig,
         raw_json=raw_text,
-        headers=json.dumps(headers_dict),
-        status="received",
+        headers=json.dumps(hdrs),
     )
     db.add(evt)
     db.commit()
+    db.refresh(evt)
 
-    # 6) (Optional) Do your actual business logic here (update a payment, etc.)
-    # For now we just say "OK"
+    # 6) (Later) do your business logic here (update payment, etc.)
     return {"ok": True, "saved": True}
