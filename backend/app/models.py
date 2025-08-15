@@ -1,6 +1,8 @@
 from sqlalchemy import String, Integer, DateTime, Enum, Numeric, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
+from sqlalchemy import Text
+from datetime import datetime
 
 class Merchant(Base):
     __tablename__ = "merchants"
@@ -33,3 +35,16 @@ class Payout(Base):
     status: Mapped[str] = mapped_column(String(30), default="scheduled")  # scheduled|paid|failed
     scheduled_for: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class WebhookEvent(Base):
+    __tablename__ = "webhook_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(50), nullable=False)                      # e.g., "adyen" (or "test")
+    event_key = Column(String(128), nullable=False, unique=True)       # idempotency key (or body hash)
+    signature = Column(String(256), nullable=True)                     # what the sender sent
+    raw_json = Column(Text, nullable=False)                            # full raw body
+    headers = Column(Text, nullable=True)                              # headers as JSON text
+    status = Column(String(20), nullable=False, default="received")    # received/processed/etc
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    processed_at = Column(DateTime, nullable=True)
