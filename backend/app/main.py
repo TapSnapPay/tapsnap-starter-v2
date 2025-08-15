@@ -10,8 +10,9 @@ import logging
 # app internals
 from .db import init_db
 from .api.routes import merchants, transactions, webhooks, onboarding
-from .admin import router as admin_ui            # <-- import the router object from admin.py
-from .public import router as public_router      # <-- your file is public.py, not public_routes.py
+from .admin import admin_ui                  # import the APIRouter instance from admin.py
+from .public import router as public_router  # your file is public.py
+
 
 app = FastAPI(title="TapSnap API", version="0.1.0")
 
@@ -35,8 +36,9 @@ app.include_router(merchants.router)
 app.include_router(transactions.router)
 app.include_router(webhooks.router)
 app.include_router(onboarding.router)
-app.include_router(admin_ui.router)   # /admin UI
-app.include_router(public_router)     # ✅ public site pages (no ".router" here)
+
+app.include_router(admin_ui)         # ✅ admin: do NOT use .router here
+app.include_router(public_router)    # ✅ public: do NOT use .router here
 
 # -----------------------------
 # Nicely formatted error pages

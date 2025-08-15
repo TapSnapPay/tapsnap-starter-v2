@@ -188,3 +188,7 @@ def export_transactions_csv(
     csv_bytes = buf.getvalue()
     headers = {"Content-Disposition": 'attachment; filename="transactions.csv"'}
     return Response(content=csv_bytes, media_type="text/csv; charset=utf-8", headers=headers)
+
+# --- at the very end of backend/app/admin.py ---
+admin_ui = router
+
