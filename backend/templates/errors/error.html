@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Something went wrong</h1>
+<div class="card">
+  <p class="muted">Status: <strong>{{ status_code }}</strong></p>
+  <p>{% if detail %}{{ detail }}{% else %}Please try again in a moment.{% endif %}</p>
+  <p>
+    <a class="btn" href="/admin/">Back to Admin</a>
+    <a class="btn" style="margin-left:8px" href="/">Home</a>
+  </p>
+</div>
+{% endblock %}
