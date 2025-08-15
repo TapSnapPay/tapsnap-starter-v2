@@ -24,3 +24,8 @@ app.include_router(webhooks.router)
 app.include_router(onboarding.router)
 app.include_router(admin_ui.router)
 app.include_router(public_router)
+
+@app.get("/", include_in_schema=False)
+def root():
+    # send anyone who visits the root to the admin UI
+    return RedirectResponse(url="/admin", status_code=307)
