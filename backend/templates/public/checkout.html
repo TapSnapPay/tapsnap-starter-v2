@@ -13,6 +13,12 @@
 </head>
 <body>
   <h1>Checkout</h1>
+{% if error %}
+  <div style="background:#ffecec;border:1px solid #ffb3b3;color:#a40000;padding:10px;border-radius:6px;margin:10px 0;">
+    {{ error }}
+  </div>
+{% endif %}
+
   <div class="card">
     <!-- When you type in Amount (dollars), we keep amount_cents updated automatically -->
     <form method="post" action="/checkout" oninput="

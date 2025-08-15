@@ -42,11 +42,58 @@ def checkout_form(
 def checkout_submit(
     request: Request,
     merchant_id: int = Form(...),
-    amount_cents: int = Form(...),
+    amount: float = Form(...),          # read dollars from the form
     currency: str = Form("USD"),
     db: Session = Depends(get_db),
 ):
-    # Create a transaction and immediately mark as authorised (simulation)
+    # --- basic checks ---
+    # 1) merchant must exist
+    m = db.get(models.Merchant, merchant_id)
+    if not m:
+        return templates.TemplateResponse(
+            "public/checkout.html",
+            {
+                "request": request,
+                "error": "That merchant ID does not exist.",
+                "merchant_id": merchant_id,
+                "amount": amount,
+                "currency": currency,
+            },
+            status_code=400,
+        )
+
+    # 2) amount must be positive
+    if amount is None or amount <= 0:
+        return templates.TemplateResponse(
+            "public/checkout.html",
+            {
+                "request": request,
+                "error": "Please enter an amount greater than 0.",
+                "merchant_id": merchant_id,
+                "amount": amount,
+                "currency": currency,
+            },
+            status_code=400,
+        )
+
+    # 3) allow only USD for now
+    if currency not in ("USD",):
+        return templates.TemplateResponse(
+            "public/checkout.html",
+            {
+                "request": request,
+                "error": "Only USD is supported right now.",
+                "merchant_id": merchant_id,
+                "amount": amount,
+                "currency": currency,
+            },
+            status_code=400,
+        )
+
+    # convert dollars to cents safely
+    amount_cents = int(round(amount * 100))
+
+    # create the transaction (simulate authorised)
     tx = models.Transaction(
         merchant_id=merchant_id,
         amount_cents=amount_cents,
@@ -62,6 +109,7 @@ def checkout_submit(
         "public/success.html",
         {"request": request, "tx": tx},
     )
+
 
 @router.get("/success", response_class=HTMLResponse)
 def success_page(request: Request):
