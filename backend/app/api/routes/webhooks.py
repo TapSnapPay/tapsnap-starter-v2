@@ -1,17 +1,14 @@
-# backend/app/api/routes/webhooks.py
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
-import hmac, hashlib, json, os
+import hmac, hashlib, json
 
 from ...db import SessionLocal
 from ...models import WebhookEvent
 from ...config import settings
+from ...security import require_webhook_auth, webhook_rate_limit
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
-basic = HTTPBasic()
 
-# --- DB session per request ---
 def get_db():
     db = SessionLocal()
     try:
@@ -19,49 +16,42 @@ def get_db():
     finally:
         db.close()
 
-# --- Basic auth specifically for webhooks ---
-def require_webhook_auth(credentials: HTTPBasicCredentials = Depends(basic)):
-    if credentials.username != settings.WEBHOOK_USER or credentials.password != settings.WEBHOOK_PASS:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return True
-
-@router.post("/adyen", dependencies=[Depends(require_webhook_auth)])
+@router.post(
+    "/adyen",
+    dependencies=[Depends(require_webhook_auth), Depends(webhook_rate_limit())],
+)
 async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
-    # 1) read raw body exactly
+    # 1) Read raw body EXACTLY as received
     raw_bytes: bytes = await request.body()
     raw_text: str = raw_bytes.decode("utf-8", "ignore")
 
-    # 2) signature check
+    # 2) Verify HMAC signature from header (X-Signature)
     secret = settings.WEBHOOK_SIGNING_SECRET or ""
-    sent_sig = request.headers.get("x-signature", "")
+    sent_sig = request.headers.get("X-Signature", "")
 
-    expected_sig = hmac.new(
-        secret.encode("utf-8"),
-        raw_bytes,
-        hashlib.sha256
-    ).hexdigest()
+    expected_sig = hmac.new(secret.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
 
-    # Fail if missing or mismatch
-    if (not secret) or (not hmac.compare_digest(sent_sig, expected_sig)):
-        # 401 keeps behavior consistent with other auth failures
+    # If a secret is configured, enforce match (401 keeps it consistent with earlier behavior)
+    if secret and not hmac.compare_digest(sent_sig, expected_sig):
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-    # 3) idempotency key: prefer header, else SHA256(raw body)
+    # 3) Idempotency key: prefer header, else hash(body)
     event_key = request.headers.get("Idempotency-Key")
     if not event_key:
         event_key = hashlib.sha256(raw_bytes).hexdigest()
 
-    # 4) fast-return if we already stored this
+    # 4) Fast duplicate check
     exists = (
         db.query(WebhookEvent)
-          .filter(WebhookEvent.event_key == event_key)
-          .first()
+        .filter(WebhookEvent.event_key == event_key)
+        .first()
     )
     if exists:
         return {"ok": True, "duplicate": True}
 
-    # 5) persist raw event + headers
+    # 5) Persist the raw event for audit/replay
     headers_dict = dict(request.headers)
+
     evt = WebhookEvent(
         provider="adyen",
         event_key=event_key,
@@ -73,5 +63,5 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(evt)
 
-    # 6) (Later) business logic to update payments
-    return {"ok": True, "saved": True, "id": evt.id}
+    # 6) (Optional) do business logic later (update a payment, etc.)
+    return {"ok": True}
