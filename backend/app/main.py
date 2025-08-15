@@ -10,8 +10,8 @@ import logging
 # app internals
 from .db import init_db
 from .api.routes import merchants, transactions, webhooks, onboarding
-from .admin import admin_ui
-from .public import router as public_router
+from .admin import router as admin_ui            # <-- import the router object from admin.py
+from .public import router as public_router      # <-- your file is public.py, not public_routes.py
 
 app = FastAPI(title="TapSnap API", version="0.1.0")
 
