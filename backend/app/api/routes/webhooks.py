@@ -185,7 +185,6 @@ if event_code == "REFUND":
 
     db.add(tx)
     handled += 1
-    continue
 
 
     # Save DB changes only if we actually touched something
