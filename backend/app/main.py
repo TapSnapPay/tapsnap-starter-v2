@@ -16,6 +16,19 @@ from .public import router as public_router  # your file is public.py
 
 app = FastAPI(title="TapSnap API", version="0.1.0")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev
+        "https://tapsnap.app",     # <- change to your real frontend domain later
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # create tables on startup if needed
 init_db()
 

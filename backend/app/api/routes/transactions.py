@@ -37,3 +37,10 @@ def confirm_transaction(tx_id: int, psp_reference: str, status: str = "authorise
     db.commit()
     db.refresh(t)
     return t
+
+@router.get("/{tx_id}", response_model=schemas.TransactionOut)
+def get_transaction(tx_id: int, db: Session = Depends(get_db)):
+    tx = db.get(models.Transaction, tx_id)
+    if not tx:
+        raise HTTPException(404, "Transaction not found")
+    return tx

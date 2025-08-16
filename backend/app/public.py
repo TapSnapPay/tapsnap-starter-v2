@@ -114,3 +114,49 @@ def success_page(
     if tx_id is not None:
         tx = db.get(models.Transaction, tx_id)
     return templates.TemplateResponse("public/success.html", {"request": request, "tx": tx})
+
+@router.post("/checkout.json")
+def checkout_json(
+    request: Request,
+    merchant_id: int = Form(...),
+    amount: Optional[float] = Form(None),
+    amount_dollars: Optional[float] = Form(None),
+    amount_cents: Optional[int] = Form(None),
+    currency: str = Form("USD"),
+    db: Session = Depends(get_db),
+):
+    # 1) merchant exists?
+    m = db.get(models.Merchant, merchant_id)
+    if not m:
+        raise HTTPException(404, "Merchant not found")
+
+    # 2) normalize amount
+    if amount_dollars is not None:
+        amount = float(amount_dollars)
+    elif amount_cents is not None:
+        amount = round((amount_cents or 0) / 100.0, 2)
+
+    # 3) validate
+    if amount is None or amount <= 0:
+        raise HTTPException(400, "Amount must be > 0")
+    if currency != "USD":
+        raise HTTPException(400, "Only USD supported right now")
+
+    # 4) create tx (authorised by default in this demo)
+    cents = int(round(amount * 100))
+    tx = models.Transaction(
+        merchant_id=merchant_id,
+        amount_cents=cents,
+        currency=currency,
+        status="authorised",
+        psp_reference="PSP_TEST_PUBLIC",
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    return {
+        "ok": True,
+        "tx_id": tx.id,
+        "redirect_url": f"/public/success?tx_id={tx.id}",
+    }
