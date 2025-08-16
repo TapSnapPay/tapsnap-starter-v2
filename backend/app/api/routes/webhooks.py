@@ -20,29 +20,18 @@ def get_db():
 
 @router.post(
     "/adyen",
-    dependencies=[Depends(require_webhook_auth), Depends(webhook_rate_limit())],
+    dependencies=[Depends(require_webhook_auth), Depends(webhook_rate_limit)],
 )
 async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
-    """
-    Hardened Adyen webhook:
-      1) Read raw body exactly as sent
-      2) Verify HMAC (X-Signature) with WEBHOOK_SIGNING_SECRET (if set)
-      3) Idempotency via Idempotency-Key header (fallback: SHA256(body))
-      4) Persist raw event + headers
-      5) BUSINESS: update Transaction on AUTHORISATION / CAPTURE / REFUND
-    """
-
-    # 1) Read raw body as sent
+    # 1) Read raw body exactly as sent
     raw_bytes: bytes = await request.body()
     raw_text: str = raw_bytes.decode("utf-8", "ignore")
 
     # 2) Signature check (optional, only if a secret is configured)
     secret = settings.WEBHOOK_SIGNING_SECRET or ""
     sent_sig = request.headers.get("X-Signature", "")
-
     if secret:
         expected_sig = hmac.new(secret.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
-        # use compare_digest to avoid timing attacks
         if not hmac.compare_digest(sent_sig, expected_sig):
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
@@ -51,7 +40,7 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     if not event_key:
         event_key = hashlib.sha256(raw_bytes).hexdigest()
 
-    # Short-circuit if we already saved this exact event (no duplicate work)
+    # Short-circuit if we already saved this exact event
     exists = (
         db.query(models.WebhookEvent)
         .filter(models.WebhookEvent.event_key == event_key)
@@ -76,7 +65,7 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
     # 5) BUSINESS: update Transaction on AUTHORISATION / CAPTURE / REFUND
     handled = 0
 
-    # Turn the raw JSON text into a Python dict (or {} if it’s not JSON)
+    # Parse body to dict
     try:
         payload = json.loads(raw_text) if raw_text else {}
     except json.JSONDecodeError:
@@ -99,7 +88,6 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
             for item in p:
                 yield item
 
-    # Walk the items and update our Transaction
     for nri in notification_items(payload):
         nri = nri or {}
         event_code = str(nri.get("eventCode", "")).upper()
@@ -107,7 +95,7 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
         psp_ref = nri.get("pspReference") or nri.get("psp_reference")
         merchant_ref = str(nri.get("merchantReference", ""))
 
-        # Find tx_id inside merchantReference like "tx_123"
+        # Extract tx_id from merchantReference like "tx_123"
         m = re.search(r"tx_(\d+)", merchant_ref)
         if not m:
             continue
@@ -125,7 +113,7 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
             tx.status = "authorised" if success else "failed"
             if psp_ref:
                 tx.psp_reference = psp_ref
-            # If Adyen sent amount in minor units, sync it (optional)
+            # Sync amount/currency if provided
             amt = nri.get("amount") or {}
             if isinstance(amt, dict):
                 if isinstance(amt.get("value"), int):
@@ -146,46 +134,27 @@ async def adyen_webhook(request: Request, db: Session = Depends(get_db)):
             continue
 
         # --- REFUND ---
-if event_code == "REFUND":
-    if success:
-        tx.status = "refunded"
-        if psp_ref:
-            tx.psp_reference = psp_ref
-
-        # NEW: mark the newest refund row for this tx as refunded
-        rf = (
-            db.query(models.Refund)
-            .filter(models.Refund.tx_id == tx.id)
-            .order_by(models.Refund.id.desc())
-            .first()
-        )
-        if rf:
-            rf.status = "refunded"
+        if event_code == "REFUND":
+            tx.status = "refunded" if success else "failed"
             if psp_ref:
-                rf.psp_reference = psp_ref
-            db.add(rf)
+                tx.psp_reference = psp_ref
 
-    else:
-        # refund failed
-        if psp_ref:
-            tx.psp_reference = psp_ref
+            # Mark the newest refund row for this tx
+            rf = (
+                db.query(models.Refund)
+                .filter(models.Refund.tx_id == tx.id)
+                .order_by(models.Refund.id.desc())
+                .first()
+            )
+            if rf:
+                rf.status = "refunded" if success else "failed"
+                if psp_ref:
+                    rf.psp_reference = psp_ref
+                db.add(rf)
 
-        # optionally mark the latest refund row as failed
-        rf = (
-            db.query(models.Refund)
-            .filter(models.Refund.tx_id == tx.id)
-            .order_by(models.Refund.id.desc())
-            .first()
-        )
-        if rf:
-            rf.status = "failed"
-            if psp_ref:
-                rf.psp_reference = psp_ref
-            db.add(rf)
-
-    db.add(tx)
-    handled += 1
-
+            db.add(tx)
+            handled += 1
+            continue
 
     # Save DB changes only if we actually touched something
     if handled:
