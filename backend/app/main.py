@@ -6,6 +6,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 from pathlib import Path
 import logging
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 # app internals
 from .db import init_db
@@ -92,14 +94,21 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    # 422: invalid or missing input
+    # Return JSON details for API routes so we can see exactly what's wrong
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": "Invalid or missing input.",
+                "errors": exc.errors(),
+                "body": getattr(exc, "body", None),
+                "path": request.url.path,
+            },
+        )
+    # Keep the nice HTML for non-API pages
     return templates.TemplateResponse(
         "errors/error.html",
-        {
-            "request": request,
-            "status_code": 422,
-            "detail": "Invalid or missing input.",
-        },
+        {"request": request, "status_code": 422, "detail": "Invalid or missing input."},
         status_code=422,
     )
 
